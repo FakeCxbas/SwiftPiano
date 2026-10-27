@@ -1,5 +1,16 @@
 # SwiftPiano — Godot 4 / 2D Synth
 
+<p align="left">
+  <a href="https://github.com/FakeCxbas/SwiftPiano/actions/workflows/ci.yml">
+    <img src="https://github.com/FakeCxbas/SwiftPiano/actions/workflows/ci.yml/badge.svg" alt="CI Status" />
+  </a>
+  <img src="https://img.shields.io/badge/Godot-4.4%2B-478CBF?logo=godotengine&logoColor=white" alt="Godot 4" />
+  <img src="https://img.shields.io/badge/Tests-906%20passing-brightgreen" alt="Tests" />
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-84CC16.svg" alt="License" />
+  </a>
+</p>
+
 Proyecto nativo en GDScript. Incluye muestras de Salamander Grand Piano; no requiere Python, pip, plugins
 ni una conexión de red para tocar. La versión anterior se conserva en
 `legacy_python/`, excluida del importador de Godot mediante `.gdignore`.
