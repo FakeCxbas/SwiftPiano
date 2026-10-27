@@ -608,7 +608,7 @@ func start_recording() -> bool:
 	if record_effect == null:
 		return false
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(RECORDINGS_DIR))
-	if AudioServer.get_driver_name(0) != "Dummy" and DisplayServer.get_name() != "headless":
+	if AudioServer.get_driver_name() != "Dummy" and DisplayServer.get_name() != "headless":
 		record_effect.set_recording_active(true)
 	is_recording = true
 	return true
@@ -616,7 +616,7 @@ func start_recording() -> bool:
 func stop_recording() -> String:
 	if not is_recording:
 		return ""
-	var use_hw = (AudioServer.get_driver_name(0) != "Dummy" and DisplayServer.get_name() != "headless")
+	var use_hw = (AudioServer.get_driver_name() != "Dummy" and DisplayServer.get_name() != "headless")
 	if record_effect != null and use_hw:
 		record_effect.set_recording_active(false)
 	is_recording = false
