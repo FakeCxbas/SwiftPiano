@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends RefCounted
 ## Pure transformation: always derive variants from the original imported sheet.
 const Parser = preload("res://scripts/sheet_parser.gd")

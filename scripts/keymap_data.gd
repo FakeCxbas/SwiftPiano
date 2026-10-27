@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends RefCounted
 ## Physical US-QWERTY positions are independent of Caps Lock and keyboard locale.
 const MIN_MIDI = 21

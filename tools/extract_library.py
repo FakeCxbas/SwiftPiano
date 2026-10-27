@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 """Extract the user's Letras PDF using its heading typography and outline.
 
 Requires Poppler only. Prints JSON; no PDF dependency is needed by the game.

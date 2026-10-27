@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends Node
 ## Salamander Yamaha C5 multisamples, with a procedural fallback if unavailable.
 ## Close-Mic Studio Piano profile: high headphone loudness, zero mud/echo, clean voice stealing.

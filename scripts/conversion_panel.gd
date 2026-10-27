@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends VBoxContainer
 const Converter = preload("res://scripts/sheet_converter.gd")
 const StudioSkin = preload("res://scripts/studio_theme.gd")
