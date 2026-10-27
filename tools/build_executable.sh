@@ -14,7 +14,7 @@ if [ -z "$GODOT_BIN" ]; then
     echo "Error: No se encontro el binario de Godot en el sistema." >&2
     exit 1
 fi
-cp "$GODOT_BIN" "build/SwiftPiano"
+cp --remove-destination "$GODOT_BIN" "build/SwiftPiano"
 chmod +x "build/SwiftPiano"
 chmod +x "bin/swiftpiano"
 chmod +x "SwiftPiano"
