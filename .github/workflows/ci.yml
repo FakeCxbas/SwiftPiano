@@ -25,4 +25,4 @@ jobs:
         run: godot --headless --path . --editor --import --quit
 
       - name: Run automated test suite
-        run: godot --headless --path . --script tests/test_piano.gd
+        run: godot --headless --audio-driver Dummy --path . --script tests/test_piano.gd
