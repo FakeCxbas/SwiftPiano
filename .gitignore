@@ -1,6 +1,8 @@
 # Godot 4
 .godot/
 *.translation
+build/
+*.pck
 
 # Python
 .venv/

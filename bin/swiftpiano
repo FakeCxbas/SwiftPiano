@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ -x "$ROOT_DIR/build/SwiftPiano" ] && [ -f "$ROOT_DIR/build/SwiftPiano.pck" ]; then
+    exec "$ROOT_DIR/build/SwiftPiano" "$@"
+elif command -v godot >/dev/null 2>&1; then
+    exec godot --path "$ROOT_DIR" "$@"
+else
+    echo "Error: No se encontro el binario de Godot ni el ejecutable de SwiftPiano." >&2
+    exit 1
+fi
