@@ -1,0 +1,26 @@
+{
+  "title": "Neon Ode",
+  "bpm": 108,
+  "notes": [
+    {"key": "g", "start": 1.0, "duration": 0.42},
+    {"key": "g", "start": 1.55, "duration": 0.42},
+    {"key": "h", "start": 2.1, "duration": 0.42},
+    {"key": "j", "start": 2.65, "duration": 0.82},
+    {"key": "j", "start": 3.75, "duration": 0.42},
+    {"key": "h", "start": 4.3, "duration": 0.42},
+    {"key": "g", "start": 4.85, "duration": 0.42},
+    {"key": "f", "start": 5.4, "duration": 0.42},
+    {"key": "d", "start": 5.95, "duration": 0.42},
+    {"key": "d", "start": 6.5, "duration": 0.42},
+    {"key": "f", "start": 7.05, "duration": 0.42},
+    {"key": "g", "start": 7.6, "duration": 0.82},
+    {"key": "g", "start": 8.7, "duration": 0.42},
+    {"key": "f", "start": 9.25, "duration": 0.42},
+    {"key": "f", "start": 9.8, "duration": 0.9},
+    {"key": "g", "start": 11.0, "duration": 0.42},
+    {"key": "g", "start": 11.55, "duration": 0.42},
+    {"key": "h", "start": 12.1, "duration": 0.42},
+    {"key": "j", "start": 12.65, "duration": 0.82},
+    {"key": "k", "start": 13.75, "duration": 0.42}
+  ]
+}

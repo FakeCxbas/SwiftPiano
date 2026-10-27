@@ -1,0 +1,22 @@
+config_version=5
+
+[application]
+config/name="SwiftPiano · 2D Synth"
+run/main_scene="res://scenes/main.tscn"
+
+[display]
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/size/window_width_override=1600
+window/size/window_height_override=900
+window/size/resizable=true
+window/vsync/vsync_mode=1
+
+[rendering]
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+viewport/hdr_2d=true
+environment/defaults/default_clear_color=Color(0.0196078, 0.0196078, 0.0196078, 1)
+
+[audio]
+driver/output_latency=15

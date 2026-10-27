@@ -1,0 +1,26 @@
+# Great Fairy Fountain - The Legend of Zelda
+# Arreglo limpio de arpegios para ciclo continuo de 4 dedos (1-2-3-4)
+
+# Cascada principal (Frase A)
+[qx] j g d z j g d L j g d z j g d
+[0z] h f s l h f s k h f s l h f s
+[9l] g d a k g d a J g d a k g d a
+[8k] f s p j f s p H f s p j f s p
+
+# Variacion (Frase B)
+[qx] j g d z j g d L j g d z j g d
+[0c] J h S x J h S Z J h S x J h S
+[9v] j g d c j g d x j g d c j g d
+[wx] g d a z g d a l g d a k g d a
+
+# Repeticion y desarrollo (Frase A2)
+[qx] j g d z j g d L j g d z j g d
+[0z] h f s l h f s k h f s l h f s
+[9l] g d a k g d a J g d a k g d a
+[8k] f s p j f s p H f s p j f s p
+
+# Cierre majestuoso (Frase B2)
+[qx] j g d z j g d L j g d z j g d
+[0c] J h S x J h S Z J h S x J h S
+[9v] j g d c j g d x j g d c j g d
+[wx] g d a z g d a [wx]

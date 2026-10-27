@@ -1,0 +1,32 @@
+# Godot 4
+.godot/
+*.translation
+
+# Python
+.venv/
+.venv*/
+venv/
+env/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Temporary & Scratch files
+scratch/
+artifacts/
+HANDOFF*.md
+
+# Large media & Recordings
+"Musicas de muestra"/
+*.mp4
+*.mov
+*.mkv
+*.avi
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
