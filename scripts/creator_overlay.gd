@@ -254,7 +254,7 @@ func _build_live_sheet_hud() -> void:
 	current_step_style.content_margin_top = 3
 	current_step_style.content_margin_bottom = 3
 	current_step_panel.add_theme_stylebox_override("panel", current_step_style)
-	current_step_panel.custom_minimum_size = Vector2(88.0, 34.0)
+	current_step_panel.custom_minimum_size = Vector2(120.0, 34.0)
 	current_step_panel.anchor_left = 0.5
 	current_step_panel.anchor_right = 0.5
 	current_step_panel.anchor_top = 0.5
@@ -269,7 +269,7 @@ func _build_live_sheet_hud() -> void:
 	current_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	current_step_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	current_step_label.add_theme_font_override("font", bold_font)
-	current_step_label.add_theme_font_size_override("font_size", 19)
+	current_step_label.add_theme_font_size_override("font_size", 18)
 	current_step_label.add_theme_color_override("font_color", Color("#FFFFFF"))
 	current_step_panel.add_child(current_step_label)
 	
@@ -281,9 +281,9 @@ func _build_live_sheet_hud() -> void:
 	left_box.anchor_right = 0.5
 	left_box.anchor_top = 0.0
 	left_box.anchor_bottom = 1.0
-	left_box.offset_right = -50.0
+	left_box.offset_right = -72.0
 	left_box.alignment = BoxContainer.ALIGNMENT_END
-	left_box.add_theme_constant_override("separation", 8)
+	left_box.add_theme_constant_override("separation", 6)
 	inner.add_child(left_box)
 	
 	prev_labels.clear()
@@ -305,9 +305,9 @@ func _build_live_sheet_hud() -> void:
 	right_box.anchor_right = 1.0
 	right_box.anchor_top = 0.0
 	right_box.anchor_bottom = 1.0
-	right_box.offset_left = 50.0
+	right_box.offset_left = 72.0
 	right_box.alignment = BoxContainer.ALIGNMENT_BEGIN
-	right_box.add_theme_constant_override("separation", 8)
+	right_box.add_theme_constant_override("separation", 6)
 	inner.add_child(right_box)
 	
 	next_labels.clear()
@@ -746,12 +746,12 @@ func _refresh_hud_tokens(animate_pulse: bool = false) -> void:
 			next_labels[i].visible = false
 	
 	if animate_pulse and current_step_panel != null:
-		current_step_panel.modulate = Color(1.5, 1.5, 1.5, 1.0)
+		current_step_panel.modulate = Color(1.45, 1.45, 1.45, 1.0)
 		if is_inside_tree():
 			if _step_pulse_tween != null and _step_pulse_tween.is_valid():
 				_step_pulse_tween.kill()
 			_step_pulse_tween = create_tween()
-			_step_pulse_tween.tween_property(current_step_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			_step_pulse_tween.tween_property(current_step_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	
 	if hud_panel != null:
 		hud_panel.queue_redraw()
@@ -819,9 +819,9 @@ func _layout_hud(animate: bool = false) -> void:
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
 	
-	var target_w = minf(560.0, vs.x - 32.0)
+	var target_w = clampf(vs.x * 0.44, 680.0, 720.0)
 	if is_shorts_active:
-		target_w = clampf(frame.size.x - 24.0, 260.0, 560.0)
+		target_w = clampf(frame.size.x - 20.0, 260.0, 480.0)
 	var target_h = 48.0
 	hud_panel.custom_minimum_size = Vector2(target_w, target_h)
 	hud_panel.size = Vector2(target_w, target_h)
