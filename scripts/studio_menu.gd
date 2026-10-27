@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends Panel
 ## All UI lives in the floating glassmorphism dock and drawer.
 const StudioSkin = preload("res://scripts/studio_theme.gd")

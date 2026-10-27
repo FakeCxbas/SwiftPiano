@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends RefCounted
 ## Shared native skin: graphite surfaces, ivory text and restrained mint accents.
 const ACCENT = Color("#64e8d0")

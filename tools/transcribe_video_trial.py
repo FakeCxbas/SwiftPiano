@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 """Local audio-to-MIDI trial; retains raw inference for editable regrouping.
 
 Run with .venv-transcribe/bin/python. No audio is uploaded.

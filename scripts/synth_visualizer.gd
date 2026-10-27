@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends Control
 
 const SPEED = 340.0

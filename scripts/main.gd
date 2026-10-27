@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends Control
 const StudioMenu = preload("res://scripts/studio_menu.gd")
 const MusicLibrary = preload("res://scripts/music_library.gd")

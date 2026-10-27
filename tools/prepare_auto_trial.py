@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 """Review this specific 576x1024 piano-roll video and group attacks for Auto.
 
 The visual calibration is specific to the supplied video, not a general converter.

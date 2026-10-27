@@ -1,3 +1,7 @@
+# SwiftPiano
+# Copyright (c) 2026 Sebastián Zambrano
+# Distributed under the terms of the MIT License.
+
 extends RefCounted
 ## Bounded Standard MIDI File reader (formats 0/1). No audio or external libraries.
 const MAX_BYTES = 8 * 1024 * 1024

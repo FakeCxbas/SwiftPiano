@@ -287,11 +287,13 @@ al 200% y 64 voces a intensidad máxima. No mide la distorsión del equipo físi
 Añade `-- --reference` al comando de mezcla para medir el perfil anterior
 sin modificar la configuración de la aplicación.
 
-## Licencia
+## Licencia y Autoría
 
 Este proyecto está disponible bajo la licencia [MIT](LICENSE).
+Consulta el archivo [AUTHORS.md](AUTHORS.md) para detalles del autor principal y créditos de desarrollo.
 
 Los bancos de sonido y muestras de audio de terceros tienen sus propias licencias abiertas y atribuciones correspondientes:
 - Muestras del piano de cola: [Salamander Grand Piano](assets/grand_piano/ATTRIBUTION.md) (Creative Commons CC BY 3.0).
 - Instrumentos adicionales: [Attribution Instruments](assets/instruments/ATTRIBUTION.md).
+
 
