@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SwiftPiano
+GenericName=Virtual Piano & Synthesizer
+Comment=Piano virtual de 88 teclas con visualizador y sintetizador 2D
+Exec=/home/fakecxbas/Proyectos/SwiftPiano/bin/swiftpiano
+Icon=/home/fakecxbas/Proyectos/SwiftPiano/assets/icon.png
+Terminal=false
+Categories=AudioVideo;Audio;Music;Game;
+Keywords=piano;synth;music;roblox;midi;virtualpiano;
+StartupNotify=true
+StartupWMClass=SwiftPiano · 2D Synth
