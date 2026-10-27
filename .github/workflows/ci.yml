@@ -22,7 +22,7 @@ jobs:
           use-dotnet: false
 
       - name: Import project assets
-        run: godot --headless --path . --editor --import --quit
+        run: godot --headless --rendering-driver dummy --audio-driver Dummy --path . --editor --import --quit
 
       - name: Run automated test suite
-        run: godot --headless --audio-driver Dummy --path . --script tests/test_piano.gd
+        run: godot --headless --rendering-driver dummy --audio-driver Dummy --path . --script tests/test_piano.gd
