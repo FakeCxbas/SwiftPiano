@@ -6,8 +6,8 @@ extends Control
 const Parser = preload("res://scripts/sheet_parser.gd")
 const Keymap = preload("res://scripts/keymap_data.gd")
 
-const PREV_ALPHAS: Array[float] = [0.20, 0.32, 0.48]
-const NEXT_ALPHAS: Array[float] = [0.85, 0.70, 0.55, 0.40, 0.25]
+const PREV_ALPHAS: Array[float] = [0.12, 0.22, 0.36]
+const NEXT_ALPHAS: Array[float] = [0.95, 0.72, 0.52, 0.36, 0.22]
 
 var active_color: Color = Color("#64e8d0")
 var zen_mode: bool = false
@@ -219,46 +219,34 @@ func _build_live_sheet_hud() -> void:
 	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	hud_style = StyleBoxFlat.new()
-	hud_style.bg_color = Color(0.05, 0.06, 0.09, 0.76)
+	hud_style.bg_color = Color(0.05, 0.06, 0.09, 0.82)
 	hud_style.set_corner_radius_all(14)
 	hud_style.set_border_width_all(1)
 	hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	hud_style.shadow_size = 10
 	hud_style.shadow_color = Color(0.0, 0.0, 0.0, 0.42)
 	hud_style.shadow_offset = Vector2(0, 4)
-	hud_style.content_margin_left = 18
-	hud_style.content_margin_right = 18
-	hud_style.content_margin_top = 8
-	hud_style.content_margin_bottom = 11
+	hud_style.content_margin_left = 16
+	hud_style.content_margin_right = 16
+	hud_style.content_margin_top = 6
+	hud_style.content_margin_bottom = 8
 	hud_panel.add_theme_stylebox_override("panel", hud_style)
 	hud_panel.draw.connect(_draw_hud_progress)
 	add_child(hud_panel)
 	
-	var hbox = HBoxContainer.new()
-	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	hbox.add_theme_constant_override("separation", 10)
-	hud_panel.add_child(hbox)
+	var inner = Control.new()
+	inner.name = "HudInner"
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.clip_contents = true
+	hud_panel.add_child(inner)
 	
-	# 3 previous steps (step_index - 3 to step_index - 1)
-	prev_labels.clear()
-	for i in range(3):
-		var lbl = Label.new()
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 14)
-		lbl.add_theme_color_override("font_color", Color(0.84, 0.89, 0.96, PREV_ALPHAS[i]))
-		hbox.add_child(lbl)
-		prev_labels.append(lbl)
-	
-	# Current step capsule (step_index)
+	# Current step capsule (step_index) - mathematically locked to exact center of inner
 	current_step_panel = PanelContainer.new()
 	current_step_panel.name = "CurrentStepCapsule"
 	current_step_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	current_step_style = StyleBoxFlat.new()
-	current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.90)
+	current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.24)
+	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.95)
 	current_step_style.set_border_width_all(1)
 	current_step_style.set_corner_radius_all(8)
 	current_step_style.content_margin_left = 12
@@ -266,7 +254,14 @@ func _build_live_sheet_hud() -> void:
 	current_step_style.content_margin_top = 3
 	current_step_style.content_margin_bottom = 3
 	current_step_panel.add_theme_stylebox_override("panel", current_step_style)
-	hbox.add_child(current_step_panel)
+	current_step_panel.custom_minimum_size = Vector2(88.0, 34.0)
+	current_step_panel.anchor_left = 0.5
+	current_step_panel.anchor_right = 0.5
+	current_step_panel.anchor_top = 0.5
+	current_step_panel.anchor_bottom = 0.5
+	current_step_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	current_step_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	inner.add_child(current_step_panel)
 	
 	current_step_label = Label.new()
 	current_step_label.name = "CurrentStepLabel"
@@ -274,20 +269,56 @@ func _build_live_sheet_hud() -> void:
 	current_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	current_step_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	current_step_label.add_theme_font_override("font", bold_font)
-	current_step_label.add_theme_font_size_override("font_size", 20)
+	current_step_label.add_theme_font_size_override("font_size", 19)
 	current_step_label.add_theme_color_override("font_color", Color("#FFFFFF"))
 	current_step_panel.add_child(current_step_label)
 	
-	# 5 next steps (step_index + 1 to step_index + 5)
+	# Left container for 3 previous steps (anchored 0.0 to 0.5, ending before center capsule)
+	var left_box = HBoxContainer.new()
+	left_box.name = "PrevStepsBox"
+	left_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left_box.anchor_left = 0.0
+	left_box.anchor_right = 0.5
+	left_box.anchor_top = 0.0
+	left_box.anchor_bottom = 1.0
+	left_box.offset_right = -50.0
+	left_box.alignment = BoxContainer.ALIGNMENT_END
+	left_box.add_theme_constant_override("separation", 8)
+	inner.add_child(left_box)
+	
+	prev_labels.clear()
+	for i in range(3):
+		var lbl = Label.new()
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.add_theme_color_override("font_color", Color(0.72, 0.80, 0.90, PREV_ALPHAS[i]))
+		left_box.add_child(lbl)
+		prev_labels.append(lbl)
+	
+	# Right container for 5 upcoming steps (anchored 0.5 to 1.0, starting after center capsule)
+	var right_box = HBoxContainer.new()
+	right_box.name = "NextStepsBox"
+	right_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right_box.anchor_left = 0.5
+	right_box.anchor_right = 1.0
+	right_box.anchor_top = 0.0
+	right_box.anchor_bottom = 1.0
+	right_box.offset_left = 50.0
+	right_box.alignment = BoxContainer.ALIGNMENT_BEGIN
+	right_box.add_theme_constant_override("separation", 8)
+	inner.add_child(right_box)
+	
 	next_labels.clear()
 	for i in range(5):
 		var lbl = Label.new()
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 16)
-		lbl.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, NEXT_ALPHAS[i]))
-		hbox.add_child(lbl)
+		lbl.add_theme_font_size_override("font_size", 16 if i == 0 else (15 - i))
+		lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0, NEXT_ALPHAS[i]))
+		right_box.add_child(lbl)
 		next_labels.append(lbl)
 
 func _build_kps_combo_hud() -> void:
@@ -715,18 +746,15 @@ func _refresh_hud_tokens(animate_pulse: bool = false) -> void:
 			next_labels[i].visible = false
 	
 	if animate_pulse and current_step_panel != null:
-		current_step_panel.pivot_offset = current_step_panel.size * 0.5
-		current_step_panel.scale = Vector2(1.14, 1.14)
+		current_step_panel.modulate = Color(1.5, 1.5, 1.5, 1.0)
 		if is_inside_tree():
 			if _step_pulse_tween != null and _step_pulse_tween.is_valid():
 				_step_pulse_tween.kill()
 			_step_pulse_tween = create_tween()
-			_step_pulse_tween.tween_property(current_step_panel, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			_step_pulse_tween.tween_property(current_step_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	
 	if hud_panel != null:
-		hud_panel.reset_size()
 		hud_panel.queue_redraw()
-	_layout_hud(false)
 
 func get_shorts_rect(view_size: Vector2 = Vector2.ZERO) -> Rect2:
 	var vs = view_size if (view_size.x > 0.0 and view_size.y > 0.0) else _effective_size()
@@ -788,21 +816,23 @@ func _layout_hud(animate: bool = false) -> void:
 		return
 	var vs = _effective_size()
 	hud_panel.visible = hud_enabled
-	hud_panel.reset_size()
-	var h_size = hud_panel.get_combined_minimum_size()
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
-	if is_shorts_active:
-		h_size.x = minf(h_size.x, maxf(160.0, frame.size.x - 20.0))
-	hud_panel.size = h_size
 	
-	var center_x = frame.position.x + (frame.size.x - h_size.x) * 0.5
+	var target_w = minf(560.0, vs.x - 32.0)
+	if is_shorts_active:
+		target_w = clampf(frame.size.x - 24.0, 260.0, 560.0)
+	var target_h = 48.0
+	hud_panel.custom_minimum_size = Vector2(target_w, target_h)
+	hud_panel.size = Vector2(target_w, target_h)
+	
+	var center_x = frame.position.x + (frame.size.x - target_w) * 0.5
 	var top_y = 24.0 if zen_mode else (menu_height + 16.0)
 	if is_shorts_active and branding_enabled and branding_position in ["top_left", "top_right"]:
 		top_y = branding_target_pos.y + branding_card.size.y + 10.0
 	
 	var target_y = (vs.y * 0.8 - 58.0) if hud_position == "above_piano" else top_y
-	var target = Vector2(clampf(center_x, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - h_size.x - 8.0)), target_y)
+	var target = Vector2(clampf(center_x, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - target_w - 8.0)), target_y)
 	hud_target_pos = target
 	
 	if animate and is_inside_tree():
