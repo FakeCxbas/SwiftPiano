@@ -39,6 +39,7 @@ var qwerty_enabled = true
 var auto_enabled = false
 var sustain_enabled = true
 var transposition = 0
+var user_transposition = 0
 var velocity = 108
 var synth_enabled = true
 var space_held = false
@@ -588,8 +589,8 @@ func _trigger_bot_step() -> void:
 	_release_source("bot")
 	var idx = clampi(step_index, 0, steps.size() - 1)
 	var step = steps[idx]
-	if step.transposition != null:
-		transposition = step.transposition
+	var base_t = step.transposition if step.transposition != null else 0
+	transposition = base_t + user_transposition
 	_bot_current_delay = _get_step_delay(idx)
 	_bot_note_released = false
 	var vels: Dictionary = step.get("velocities", {})
@@ -914,18 +915,16 @@ func _reset_auto() -> void:
 	for source in sources.keys():
 		_release_source(source)
 	step_index = 0
-	if not steps.is_empty() and steps[0].transposition != null:
-		transposition = steps[0].transposition
-	else:
-		transposition = 0
+	var base_t = steps[0].transposition if not steps.is_empty() and steps[0].transposition != null else 0
+	transposition = base_t + user_transposition
 	_refresh_progress()
 	_refresh()
 
 func set_transposition(value: int) -> void:
-	var clamped = clampi(value, -48, 48)
-	if transposition == clamped:
-		return
-	transposition = clamped
+	var base_t = steps[step_index].transposition if not steps.is_empty() and steps[step_index].transposition != null else (steps[0].transposition if not steps.is_empty() and steps[0].transposition != null else 0)
+	var new_user_t = clampi(value - base_t, -48, 48)
+	user_transposition = new_user_t
+	transposition = clampi(base_t + user_transposition, -48, 48)
 	var sign_str = "+" if transposition > 0 else ""
 	var msg = "Transposición: %s%d semitonos" % [sign_str, transposition]
 	if creator_overlay != null:
@@ -956,8 +955,10 @@ func _compile_sheet() -> void:
 		auto_enabled = false
 		if bot_enabled:
 			set_bot_enabled(false)
-	elif steps[0].transposition != null:
-		transposition = steps[0].transposition
+		transposition = user_transposition
+	else:
+		var base_t = steps[0].transposition if steps[0].transposition != null else 0
+		transposition = base_t + user_transposition
 	if creator_overlay != null:
 		creator_overlay.update_steps(steps, step_index, false)
 	_sync_creator_song_title()
@@ -1097,8 +1098,8 @@ func _input(event: InputEvent) -> void:
 	if auto_enabled and Keymap.is_note_key(code):
 		if not steps.is_empty():
 			var step = steps[step_index]
-			if step.transposition != null:
-				transposition = step.transposition
+			var base_t = step.transposition if step.transposition != null else 0
+			transposition = base_t + user_transposition
 			var vels: Dictionary = step.get("velocities", {})
 			_press_source(code, step.notes, vels)
 			step_index = (step_index + 1) % steps.size()
