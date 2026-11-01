@@ -433,14 +433,13 @@ func _build_sheet() -> void:
 	body.add_child(box)
 	var toolbar = HFlowContainer.new()
 	box.add_child(toolbar)
-	for entry in [["conversion", "Convertidor MIDI"], ["ExportSheet", "Guardar hoja"], ["Paste", "Pegar"], ["Clear", "Borrar"], ["Reset", "Reiniciar"]]:
+	for entry in [["ImportMidi", "Cargar MIDI"], ["conversion", "Convertidor MIDI"], ["ExportSheet", "Guardar hoja"], ["Paste", "Pegar"], ["Clear", "Borrar"], ["Reset", "Reiniciar"]]:
 		var item = button(entry[1])
 		item.clip_text = false
-		item.custom_minimum_size.x = 96 if entry[0] == "Reset" else 72
+		item.custom_minimum_size.x = 96 if entry[0] in ["Reset", "ImportMidi", "conversion"] else 72
 		popup_buttons[entry[0]] = item
 		item.pressed.connect(func(): action.emit(entry[0]))
 		toolbar.add_child(item)
-	popup_buttons["ImportMidi"] = popup_buttons["conversion"]
 	sheet_text_edit = TextEdit.new()
 	sheet_text_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	sheet_text_edit.placeholder_text = "Carga una canción de Biblioteca o pega tu hoja aquí."
