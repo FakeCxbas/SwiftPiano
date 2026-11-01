@@ -89,6 +89,31 @@ func run() -> void:
 	app._export_sheet(output)
 	check(Parser.parse(FileAccess.get_file_as_string(output)) == app.steps, "Saved sheet round-trips without losing pitches")
 	app.midi_notice.hide()
+	
+	# Test velocity preservation
+	var vel_track = [0, 0x90, 60, 45, 0, 64, 115, 0, 0xff, 0x2f, 0]
+	var vel_parsed = Parser.parse(Importer.new().parse_bytes(midi([vel_track])).sheet)
+	check(vel_parsed.size() == 1 and vel_parsed[0].has("velocities"), "Velocities dictionary extracted")
+	check(vel_parsed[0].velocities.get(60) == 45 and vel_parsed[0].velocities.get(64) == 115, "Note dynamics preserved accurately")
+
+	# Test arrow up and down transposition
+	var prev_transp = app.transposition
+	var up_event = InputEventKey.new()
+	up_event.keycode = KEY_UP
+	up_event.physical_keycode = KEY_UP
+	up_event.pressed = true
+	app._input(up_event)
+	check(app.transposition == prev_transp + 1, "Arrow Up transposes +1 semitone")
+	var down_event = InputEventKey.new()
+	down_event.keycode = KEY_DOWN
+	down_event.physical_keycode = KEY_DOWN
+	down_event.pressed = true
+	app._input(down_event)
+	app._input(down_event)
+	check(app.transposition == prev_transp - 1, "Arrow Down transposes -1 semitone")
+	app.set_transposition(0)
+	check(app.transposition == 0, "Transposition reset to 0")
+
 	app._menu_action("ImportMidi")
 	check(app.midi_dialog.visible and not app.auto_enabled, "Import action opens picker and pauses Auto")
 	app.midi_dialog.hide()

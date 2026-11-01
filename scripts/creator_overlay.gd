@@ -619,8 +619,12 @@ func set_zen_mode(enabled: bool, current_menu_height: float = 112.0, show_toast:
 		zen_toast.visible = false
 
 func trigger_zen_toast() -> void:
-	if zen_toast == null:
+	trigger_toast("Modo Grabación Activo • [|] o [Esc] para mostrar menú")
+
+func trigger_toast(msg: String) -> void:
+	if zen_toast == null or zen_toast_label == null:
 		return
+	zen_toast_label.text = msg
 	if _toast_tween != null and _toast_tween.is_valid():
 		_toast_tween.kill()
 	zen_toast.visible = true

@@ -79,15 +79,27 @@ static func parse(text: String, library_sheet: bool = false) -> Array[Dictionary
 		# Explicit absolute pitches preserve the complete 88-key range in MIDI sheets.
 		if line.begins_with("MIDI:"):
 			var notes: Array[int] = []
+			var velocities: Dictionary = {}
 			var valid = true
-			for token in line.substr(5).split("#", true, 1)[0].strip_edges().split(" ", false):
-				if not token.is_valid_int() or int(token) < 21 or int(token) > 108:
+			for raw_token in line.substr(5).split("#", true, 1)[0].strip_edges().split(" ", false):
+				var parts = raw_token.split(":")
+				var pitch_str = parts[0]
+				var vel = -1
+				if parts.size() > 1 and parts[1].is_valid_int():
+					vel = clampi(int(parts[1]), 1, 127)
+				if not pitch_str.is_valid_int() or int(pitch_str) < 21 or int(pitch_str) > 108:
 					valid = false
 					break
-				if not notes.has(int(token)):
-					notes.append(int(token))
+				var p = int(pitch_str)
+				if not notes.has(p):
+					notes.append(p)
+				if vel > 0:
+					velocities[p] = vel
 			if valid and not notes.is_empty():
-				steps.append({"notes": notes, "transposition": 0, "token": format_notes(notes)})
+				var step_dict = {"notes": notes, "transposition": 0, "token": format_notes(notes)}
+				if not velocities.is_empty():
+					step_dict["velocities"] = velocities
+				steps.append(step_dict)
 			continue
 		var found = directive.search(line)
 		if found:
