@@ -122,6 +122,24 @@ func run() -> void:
 	app.set_transposition(0)
 	check(app.transposition == 0, "Transposition reset to 0")
 
+	# Test drag and drop MIDI file
+	app.steps.clear()
+	app.midi_notice.hide()
+	app._on_files_dropped(PackedStringArray([path]))
+	check(app.steps.size() == 2, "Dropped MIDI file parsed into steps")
+	check(not app.midi_notice.visible, "Dropped MIDI does not open blocking notice")
+	check(app.step_delays.size() == 2, "Dropped MIDI loads step delays")
+	check(not app.bot_enabled, "Bot is disabled initially")
+
+	# Test Bot playback (Ctrl + P) with faithful velocity
+	app.toggle_bot_mode()
+	check(app.bot_enabled, "Bot enabled via toggle_bot_mode")
+	check(app.keyboard.active.has(21) and app.keyboard.active.has(60) and app.keyboard.active.has(108), "Bot triggers active keys immediately")
+	check(app.sources.has("bot"), "Bot is registered as active playing source")
+	app.toggle_bot_mode()
+	check(not app.bot_enabled, "Bot stopped via toggle_bot_mode")
+	check(app.keyboard.active.is_empty(), "Keys released when bot stopped")
+
 	app._menu_action("ImportMidi")
 	check(app.midi_dialog.visible and not app.auto_enabled, "Import action opens picker and pauses Auto")
 	app.midi_dialog.hide()

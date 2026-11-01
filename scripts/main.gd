@@ -184,7 +184,29 @@ func _ready() -> void:
 			menu.song_title.text = "%s  /  88 Teclas" % audio.get_current_instrument_name()
 	if DisplayServer.get_name() != "headless":
 		load_user_settings(settings_path)
+	get_window().files_dropped.connect(_on_files_dropped)
 	_sync_creator_song_title()
+
+func _on_files_dropped(files: PackedStringArray) -> void:
+	if files.is_empty():
+		return
+	var path = files[0]
+	var ext = path.get_extension().to_lower()
+	if ext in ["mid", "midi"]:
+		_import_midi(path, false)
+	elif ext == "txt":
+		var file = FileAccess.open(path, FileAccess.READ)
+		if file != null:
+			var content = file.get_as_text()
+			_apply_conversion(content, path.get_file().get_basename())
+			if creator_overlay != null:
+				creator_overlay.trigger_toast("Hoja cargada: %s • Ctrl+P para reproducir" % path.get_file().get_basename())
+	elif ext in ["png", "jpg", "jpeg", "webp"]:
+		load_custom_wallpaper(path)
+	elif ext in ["ogv", "webm"]:
+		load_custom_video_loop(path)
+	elif creator_overlay != null:
+		creator_overlay.trigger_toast("Formato no soportado: ." + ext)
 
 func _process(delta: float) -> void:
 	if trauma > 0.0:
@@ -387,12 +409,15 @@ func set_background_opacity(opacity: float) -> void:
 	if video_bg_player != null:
 		video_bg_player.modulate.a = bg_opacity
 
-func _import_midi(path: String) -> void:
+func _import_midi(path: String, show_dialog: bool = true) -> bool:
 	var result = MidiImporter.new().import_file(path)
 	if not result.error.is_empty():
-		midi_notice.dialog_text = result.error + "\nLa hoja actual se conserva."
-		midi_notice.popup_centered(Vector2i(440, 160))
-		return
+		if show_dialog:
+			midi_notice.dialog_text = result.error + "\nLa hoja actual se conserva."
+			midi_notice.popup_centered(Vector2i(440, 160))
+		elif creator_overlay != null:
+			creator_overlay.trigger_toast("Error MIDI: " + result.error)
+		return false
 	# Keep the previous draft until conversion has succeeded.
 	drafts[selected_song] = sheet_text_edit.text
 	_pause_for_file_dialog()
@@ -410,10 +435,15 @@ func _import_midi(path: String) -> void:
 	menu.song_title.tooltip_text = path
 	_sync_creator_song_title()
 	menu.show_section("sheet", false)
-	popup.show()
 	_refresh()
-	midi_notice.dialog_text = "%d pasos de %d pistas.\nPercusión omitida: %d · Fuera de A0–C8: %d\nActiva Auto y pulsa letras o números para avanzar.\nEl ritmo, la duración y el pedal los controlas tú.\nUsa Guardar hoja para conservar el resultado." % [result.steps, result.tracks, result.percussion, result.omitted]
-	midi_notice.popup_centered(Vector2i(520, 220))
+	if show_dialog:
+		popup.show()
+		midi_notice.dialog_text = "%d pasos de %d pistas.\nPercusión omitida: %d · Fuera de A0–C8: %d\nActiva Auto y pulsa letras o números para avanzar.\nEl ritmo, la duración y el pedal los controlas tú.\nUsa Guardar hoja para conservar el resultado." % [result.steps, result.tracks, result.percussion, result.omitted]
+		midi_notice.popup_centered(Vector2i(520, 220))
+	else:
+		if creator_overlay != null:
+			creator_overlay.trigger_toast("MIDI cargado: %s (%d pasos) • Ctrl+P para reproducir" % [path.get_file().get_basename(), result.steps])
+	return true
 
 func _apply_conversion(text: String, title: String) -> void:
 	drafts[selected_song] = sheet_text_edit.text
