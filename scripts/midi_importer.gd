@@ -127,9 +127,9 @@ func parse_bytes(bytes: PackedByteArray, title: String = "MIDI") -> Dictionary:
 						if not onsets.has(tick):
 							if onsets.size() >= MAX_STEPS:
 								return {"error": "La hoja supera los 10.000 pasos. Divide el MIDI en fragmentos."}
-							onsets[tick] = []
-						if not onsets[tick].has(note):
-							onsets[tick].append(note)
+							onsets[tick] = {}
+						if not onsets[tick].has(note) or value > onsets[tick][note]:
+							onsets[tick][note] = value
 			else:
 				error = "Evento MIDI no admitido."
 		if not error.is_empty():
@@ -152,12 +152,14 @@ func parse_bytes(bytes: PackedByteArray, title: String = "MIDI") -> Dictionary:
 		var next_tick = ticks[idx + 1] if idx + 1 < ticks.size() else (tick + division)
 		var step_delay = clampf(float(maxi(1, next_tick - tick)) * sec_per_tick, 0.04, 4.0)
 		delays.append(step_delay)
-		var chord: Array = onsets[tick]
+		var chord_dict: Dictionary = onsets[tick]
+		var chord: Array = chord_dict.keys()
 		chord.sort()
 		var notes = PackedStringArray()
 		var keys = PackedStringArray()
 		for note in chord:
-			notes.append(str(note))
+			var vel = int(chord_dict[note])
+			notes.append("%d:%d" % [note, vel] if vel > 0 and vel != 88 else str(note))
 			keys.append(labels[note])
 		lines.append("MIDI: %s # teclas: %s · tick %d" % [" ".join(notes), " ".join(keys), tick])
 	return {"error": "", "sheet": "\n".join(lines), "steps": ticks.size(), "delays": delays, "percussion": percussion, "omitted": omitted, "tracks": tracks}

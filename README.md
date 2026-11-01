@@ -95,6 +95,8 @@ Las etiquetas adaptan su contraste al color de la tecla.
 - `Sustain` enclava el pedal; Space lo mantiene temporalmente cuando está apagado.
 - `Shift + Space` alterna el enclavamiento. Soltar Space respeta el estado del botón,
   incluso al escribir espacios en el buscador o en la hoja.
+- `Flecha Arriba` / `Flecha Abajo`: transpone la afinación semitono a semitono (+1 / -1) en tiempo real con notificación flotante, afectando tanto ejecución manual como Auto y Bot.
+- `Ctrl + P`: activa/desactiva el modo Bot (`toggle_bot_mode`), reproduciendo la hoja actual de forma autónoma con dinámicas reales de velocidad y delays fieles en archivos MIDI importados.
 - `Hoja` abre el editor; `Activar Auto` / `Pausar Auto` actúa directamente.
 - `Biblioteca` permite buscar y cargar las canciones del PDF.
 - `Estudio` reúne instrumentos, reverberación, colores, barras e iluminación.

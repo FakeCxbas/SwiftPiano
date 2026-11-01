@@ -592,7 +592,8 @@ func _trigger_bot_step() -> void:
 		transposition = step.transposition
 	_bot_current_delay = _get_step_delay(idx)
 	_bot_note_released = false
-	_press_source("bot", step.notes)
+	var vels: Dictionary = step.get("velocities", {})
+	_press_source("bot", step.notes, vels)
 	step_index = (idx + 1) % steps.size()
 	_refresh_progress()
 
@@ -850,7 +851,8 @@ func _set_volume(value: float) -> void:
 		audio.set_volume(int(clampf(value, 0, 100) * 2))
 
 func _refresh_progress() -> void:
-	counter.text = ("ACTIVO" if auto_enabled else "EN PAUSA") + "  ·  Paso %d de %d" % [step_index + 1 if not steps.is_empty() else 0, steps.size()]
+	var t_info = "  (Transp: %+d)" % transposition if transposition != 0 else ""
+	counter.text = ("ACTIVO" if auto_enabled else "EN PAUSA") + "  ·  Paso %d de %d%s" % [step_index + 1 if not steps.is_empty() else 0, steps.size(), t_info]
 	next_step.text = "Siguiente: " + step_labels[step_index] if not steps.is_empty() else "Pega una hoja para comenzar"
 	progress.max_value = maxi(1, steps.size())
 	progress.value = step_index
@@ -918,6 +920,18 @@ func _reset_auto() -> void:
 		transposition = 0
 	_refresh_progress()
 	_refresh()
+
+func set_transposition(value: int) -> void:
+	var clamped = clampi(value, -48, 48)
+	if transposition == clamped:
+		return
+	transposition = clamped
+	var sign_str = "+" if transposition > 0 else ""
+	var msg = "Transposición: %s%d semitonos" % [sign_str, transposition]
+	if creator_overlay != null:
+		creator_overlay.trigger_toast(msg)
+	_refresh_progress()
+
 
 func _compile_sheet() -> void:
 	if compiled_text == sheet_text_edit.text and not steps.is_empty():
@@ -990,7 +1004,7 @@ func _input(event: InputEvent) -> void:
 			_refresh()
 			get_viewport().set_input_as_handled()
 			return
-		if is_plus or is_pipe or is_reset_key:
+		if is_plus or is_pipe or is_reset_key or code == KEY_UP or code == KEY_DOWN:
 			get_viewport().set_input_as_handled()
 			return
 		return
@@ -1058,6 +1072,11 @@ func _input(event: InputEvent) -> void:
 		_popup_action("Auto")
 		get_viewport().set_input_as_handled()
 		return
+	if code == KEY_UP or code == KEY_DOWN:
+		var delta_t = 1 if code == KEY_UP else -1
+		set_transposition(transposition + delta_t)
+		get_viewport().set_input_as_handled()
+		return
 	if auto_enabled:
 		get_viewport().set_input_as_handled()
 	if pressed.has(code):
@@ -1080,7 +1099,8 @@ func _input(event: InputEvent) -> void:
 			var step = steps[step_index]
 			if step.transposition != null:
 				transposition = step.transposition
-			_press_source(code, step.notes)
+			var vels: Dictionary = step.get("velocities", {})
+			_press_source(code, step.notes, vels)
 			step_index = (step_index + 1) % steps.size()
 			_refresh_progress()
 	elif not auto_enabled:
@@ -1089,7 +1109,7 @@ func _input(event: InputEvent) -> void:
 			_press_source(code, [midi])
 			get_viewport().set_input_as_handled()
 
-func _press_source(source: Variant, notes: Array) -> void:
+func _press_source(source: Variant, notes: Array, note_velocities: Dictionary = {}) -> void:
 	if sources.has(source):
 		return
 	var group: Array[Dictionary] = []
@@ -1100,12 +1120,13 @@ func _press_source(source: Variant, notes: Array) -> void:
 		var pitch = int(midi) + transposition
 		if pitch < 21 or pitch > 108:
 			continue
+		var note_vel = int(note_velocities.get(midi, velocity))
 		pitches.append(pitch)
-		if pitch < 45 and velocity >= 85:
+		if pitch < 45 and note_vel >= 85:
 			has_deep_bass = true
 		serial += 1
 		group.append({"token": serial, "midi": pitch})
-		audio.note_on(serial, pitch, velocity)
+		audio.note_on(serial, pitch, note_vel)
 		var color = Color.from_hsv(fmod(Time.get_ticks_msec() * 0.00008, 1.0), 0.65, 1.0) if rainbow else active_color
 		first_color = color
 		keyboard.press(pitch, color)
