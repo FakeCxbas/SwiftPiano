@@ -110,7 +110,15 @@ func run() -> void:
 	down_event.pressed = true
 	app._input(down_event)
 	app._input(down_event)
-	check(app.transposition == prev_transp - 1, "Arrow Down transposes -1 semitone")
+	app.set_transposition(3)
+	check(app.transposition == 3, "Transposition set to +3")
+	var tab_event = InputEventKey.new()
+	tab_event.keycode = KEY_TAB
+	tab_event.physical_keycode = KEY_TAB
+	tab_event.pressed = true
+	app._input(tab_event)
+	check(app.step_index == 0, "Tab resets step index to 0")
+	check(app.transposition == 3, "Tab preserves user transposition +3")
 	app.set_transposition(0)
 	check(app.transposition == 0, "Transposition reset to 0")
 
