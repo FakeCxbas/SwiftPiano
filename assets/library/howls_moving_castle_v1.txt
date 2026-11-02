@@ -1,0 +1,42 @@
+# Howl's Moving Castle (Merry-Go-Round of Life) - Version 1
+# Joe Hisaishi - Transcripcion clasica para Piano Solo (Vals en 3/4)
+
+# I. Introduccion Cromatica (Acordes ascendentes y arpegio de entrada)
+[@(YD] [%WOH] [7rak] 3 [0uf] [epj] [tsl]
+
+# II. Tema Principal (Vals - Bajo en tiempo 1, acordes y melodia en 2 y 3)
+[2fjx] [9qetfj] [fl] [9qetfj] [fl]
+[3dHz] [0WrydH] [dk] [0WrydHz] [dk]
+[6l] k [680ej] f [680es] a
+[6p] [680e] p [680es] f
+[29psgj] [9qet] [psgj] [9qet] [psgj]
+[5pj] [qwrak] [qwroh] [ig]
+[1oh] [0wrf] D [0wrf] g
+[5f] [0wr] a [0wrf] h
+[$afhk] [0Qt] [0Qtpj]
+[7oh] [(wrIG] [(wroh]
+[3pj] [0wr] [0wroh]
+[2IG] [0wr] [0wruf]
+[8yd] [0wts] [0wyd]
+[7uf] [0wyd] [0wep]
+[30ra] [0er] u [0erp] a
+[30yOa] [0Wr] [uf] [30pj] [sl]
+
+# III. Repeticion Variada y Tension Armonica
+[2fjx] [9qetfj] [fl] [9qetfj] [fl]
+[3dHz] [0WrydH] [dk] [0WrydH] [dk]
+[6l] k [680ej] f [680es] a
+[5^9qp] s [25^] f s
+[4psgj] [qetu] [psgj] [qetu] [psgj]
+[4pj] [qetuak] [qetu] [oh]
+[3oh] [0wry] [oa] [0wryoa] [ad]
+[6ad] [0etps] a [0etf] h
+[$afhk] [0Qt] [0Qtpj] 7
+[(wroh] [IG] [(wrig] [IG]
+[3pj] [0wr] [0wroh] 2
+[0wrIG] [uf] [0wrYD] [uf]
+[1oh] [0wryd] [uf] [0wryd] [ts]
+[7ra] [7(Q] [TS] [7(QYD]
+
+# IV. Coda y Arpegio Final Arriba
+[3uOaDf] [0Wru] O a [0Wrf] H k x

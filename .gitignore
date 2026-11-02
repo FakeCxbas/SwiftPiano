@@ -20,6 +20,7 @@ HANDOFF*.md
 
 # Large media & Recordings
 "Musicas de muestra"/
+recordings/
 *.mp4
 *.mov
 *.mkv
