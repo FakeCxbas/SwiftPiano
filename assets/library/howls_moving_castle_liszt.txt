@@ -1,0 +1,57 @@
+# Howl's Moving Castle (Merry-Go-Round of Life) - Paraphrase de Concert (a la Franz Liszt)
+# Arreglo de Concierto Virtuoso y Romantico para Piano Solo (88 Teclas)
+# The Legend of Joe Hisaishi / Transcripcion y Parafrasis de Concierto estilo Franz Liszt
+
+# I. Introduzione e Preludio quasi una Fantasia (Campanas del Destino y Arpegio Etereo)
+[!%W] [@(Y] [%WO] [7rak]
+[30] [0ru] [Oa] [Df] [Hk] [fx]
+x z l k j h g f d s a p o u y t r e w q 0 9 8 7 3
+[30uf] [epj] [tsl]
+
+# II. Valse Melancolique a Tre Mani (Tema en cascada virtuosa con bajos en octava)
+[29yjx] e q [9etfl] q e [9etfl]
+[30uz] r 0 [0Wrdk] 0 r [0Wrdk]
+[6qepl] k [60ej] f [60es] a
+[6qeop] [60e] p [60es] f
+[29qpsgj] [9qe] [psgj] [9qe] [psgj]
+[5wrypj] [qwra] k [qwroh] [ig]
+[180wtoh] [0wrf] D [0wrf] g
+[5wruf] [0wr] a [0wrf] h
+[$0Qafhk] [0Qt] [0Qtpj]
+[7(wroh] [(wrIG] [(wroh]
+[30wrpj] [0wr] [0wroh]
+[29wrIG] [0wr] [0wruf]
+[80wtyd] [0wts] [0wyd]
+[7(wruf] [0wyd] [0wep]
+[30rua] [0er] u [0erp] a
+[30yOa] [0Wr] [uf] [30pj] [sl]
+
+# III. Sviluppo Appassionato (Gran barrido virtuoso de 5 octavas)
+[29y] [et] [ip] [sd] [gj] [lx]
+x l j g d s p i t e y q 9 2
+[30u] [ry] [Oa] [df] [hk] [zC]
+C z k h f d a O y r u 0 3
+
+# IV. Grand Climax Maestoso (Grandioso Concierto Romantico a dos manos fortissimo)
+[29qeyfjx] [9qet] [fl] [9qet] [fl]
+[3*0WrdHz] [0Wry] [dk] [0Wry] [dk]
+[680eqel] k [680ej] f [680es] a
+[5^9qep] s [25^] f s
+[48qetpsgj] [qetu] [psgj] [qetu] [psgj]
+[48qetpj] [qetuak] [qetu] [oh]
+[30wryoh] [0wry] [oa] [0wryoa] [ad]
+[680etad] [0etps] a [0etf] h
+[$!*0Qafhk] [0Qt] [0Qtpj]
+[7(wroh] [IG] [(wrig] [IG]
+[30wrpj] [0wr] [0wroh]
+[29wrIG] [uf] [0wrYD] [uf]
+[180wtoh] [0wryd] [uf] [0wryd] [ts]
+[7(Qra] [7(Q] [TS] [7(QYD]
+
+# V. Cadenza Celeste e Coda Angelica (Desvanecimiento celestial)
+[30ruOaDf]
+[0Wru] [Oa] [Df] [Hk] [fx] [hz] [lx] [m]
+m l k j h f d s a p o u
+[30ruOaDf]
+[30ru] [Oa] [fx] [m]
+[30yruOaDfxm]
