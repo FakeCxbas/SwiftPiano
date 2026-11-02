@@ -29,6 +29,7 @@ func _init() -> void:
 	songs.append({"id": "love-is-orange", "title": "Love Is Orange (MEGIDDO MIX) - Orange Lounge", "page": 0, "end_page": 0, "source": "Transcripción de Video / Synthesia", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/love_is_orange.txt")})
 	songs.append({"id": "great-fairy-fountain", "title": "Great Fairy Fountain (Liszt Concert Paraphrase) - Zelda", "page": 0, "end_page": 0, "source": "Paráfrasis de Concierto a lo Franz Liszt", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/great_fairy_fountain.txt", "letras-011")})
 	songs.append({"id": "howls-moving-castle-v1", "title": "Howl's Moving Castle (Merry-Go-Round of Life) - Versión 1", "page": 0, "end_page": 0, "source": "Joe Hisaishi / Vals en 3/4", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_v1.txt", "letras-005")})
+	songs.append({"id": "howls-moving-castle-liszt", "title": "Howl's Moving Castle (Liszt Concert Paraphrase) - Hisaishi", "page": 0, "end_page": 0, "source": "Paráfrasis de Concierto a lo Franz Liszt", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_liszt.txt", "howls-moving-castle-v1")})
 
 
 static func source_description(song: Dictionary) -> String:
