@@ -1,0 +1,38 @@
+# Howl's Moving Castle (Parte God Maníaca) - Joe Hisaishi
+# Transcripcion de Concierto Virtuosa y Maníaca (Alternancia de Octavas y Bajos Pesados)
+
+# I. Motor Maníaco (Tema de la Parte God con bajos pesados en octava)
+[29y] d y d [Eweyo] h o h [weyEP] J P J
+[18d] z d z [(Ewd] z d z [(Ewd] z d z
+[29s] l s l [etQP] J P J [Qetp] j p j
+[5wP] J P J [weyEP] J P J [weyEP] J P J
+[4qe] h o h [weyEP] J P J [Eweyd] z d z
+[18h] v h v [(Ewh] v h v [(Ewh] v h v
+[4qh] v h v [Yetg] c g c [etYD] Z D Z
+[^qg] c g c [qeyg] c g c [qeyg] c g c
+[4qp] j p j [qeyd] z d z [qeyg] c g c
+
+# II. Escalada Virtuosa hacia el Registro Agudo
+[30j] b j b [Ewyj] b j b [Ewyh] v h v
+[60g] c g c [T0ef] x f x [Teug] c g c
+[29h] v h v [qeyh] v h v [qeyg] c g c
+[18f] x f x [etuf] x f x [etud] z d z
+[^qs] l s l [qeyP] J P J [qeys] l s l
+[60d] z d z [0wts] l s l [0wto] h o h
+[29p] j p j [9p] j p j [29p] j p j [9p] j p j
+
+# III. Interludio Frenetico (Aceleracion y tension de octavas)
+[5w] J P J [5w] k a k [5w] l s l [5w] z d z
+[30] x f x [30] z d z [30] l s l [30] k a k
+
+# IV. Climax Furia a Dos Manos (Doble golpe y explosion fortissimo)
+[29yd] z d z [Eweyoh] v h v [weyEPJ] b J b
+[18td] z d z [(Ewtd] z d z [(Ewtd] z d z
+[29ys] l s l [etQPJ] b J b [Qetpj] b j b
+[30yjb] [yjb] [wvh] [wvh] [qgc] [qgc] [0fx] [0fx]
+[9dz] [9dz] [8sl] [8sl] [7ak] [7ak] [6pj] [6pj]
+
+# V. Coda Furiosa y Martilleo Final
+[29qeyp] [pj] [pj] [29qeyp] [pj] [pj]
+[29qeyp] [pj] [29qeyp] [pj] [29qeyp]
+[29qeypdjz]
