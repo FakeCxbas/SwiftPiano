@@ -1,26 +1,41 @@
-# Great Fairy Fountain - The Legend of Zelda
-# Arreglo limpio de arpegios para ciclo continuo de 4 dedos (1-2-3-4)
+# Great Fairy Fountain - Paraphrase de Concert (a la Franz Liszt)
+# Arreglo de Concierto Romantico y Virtuoso para Piano Solo (88 Teclas)
+# The Legend of Zelda - Koji Kondo / Transcripcion de Concierto estilo Franz Liszt
 
-# Cascada principal (Frase A)
-[qx] j g d z j g d L j g d z j g d
-[0z] h f s l h f s k h f s l h f s
-[9l] g d a k g d a J g d a k g d a
-[8k] f s p j f s p H f s p j f s p
+# I. Introduzione quasi un'Arpa (Campanas Etereas y Barrido de Arpa)
+[fxm] [dzn] [slb] [akv]
+[48q] [0wt] [yui] [ops] [dfg] [hjk] [lzx] [cvb] [m]
+b v c x z l k j h g f d s a p o
 
-# Variacion (Frase B)
-[qx] j g d z j g d L j g d z j g d
-[0c] J h S x J h S Z J h S x J h S
-[9v] j g d c j g d x j g d c j g d
-[wx] g d a z g d a l g d a k g d a
+# II. Tema a tre mani (Cascada con bajos en octava y contrapunto cantabile)
+[48qx] j g d [tez] j g d [8qeL] j g d [wtz] j g d
+[180wz] h f s [0wtl] h f s [80wk] h f s [wtl] h f s
+[29qel] g d a [9wek] g d a [69qJ] g d a [qek] g d a
+[380wk] f s p [0wtj] f s p [80wH] f s p [wtj] f s p
 
-# Repeticion y desarrollo (Frase A2)
-[qx] j g d z j g d L j g d z j g d
-[0z] h f s l h f s k h f s l h f s
-[9l] g d a k g d a J g d a k g d a
-[8k] f s p j f s p H f s p j f s p
+# III. Sviluppo Appassionato (Tension armonica y enriquecimiento polifonico)
+[48qix] j g d [8qtz] j g d [48eL] j g d [8qtz] j g d
+[3*0c] J h S [*0Tx] J h S [3*0Z] J h S [*0Tx] J h S
+[259v] j g d [59qc] j g d [259x] j g d [59qc] j g d
+[158wx] g d a [58wz] g d a [158l] g d a [58wk] g d a
 
-# Cierre majestuoso (Frase B2)
-[qx] j g d z j g d L j g d z j g d
-[0c] J h S x J h S Z J h S x J h S
-[9v] j g d c j g d x j g d c j g d
-[wx] g d a z g d a [wx]
+# IV. Bravura: Volata della Cascata (Gran barrido virtuoso de 5 octavas)
+[48q] [0wt] [yui] [ops] [dfg] [hjk] [lzx] [cvb] [m]
+m b v c x z l k j h g f d s a p o i u y t r e w q 0 9 8 7 6 5 4
+[!48q] [*0w] [Tep] [Sdf] [Ljl]
+
+# V. Climax Maestoso (Grandioso a dos manos fortissimo)
+[48qetix] j g d [48qtz] j g d [48qeL] j g d [48qtz] j g d
+[180wushz] h f s [180wtl] h f s [180wfk] h f s [180wtl] h f s
+[29qeydjl] g d a [29wek] g d a [269qJ] g d a [29wek] g d a
+[380wrufk] f s p [380wtj] f s p [380wH] f s p [380wtj] f s p
+[48qetix] j g d [48qtz] j g d [48qeL] j g d [48qtz] j g d
+[3*0Tc] J h S [3*0Tx] J h S [3*0TZ] J h S [3*0Tx] J h S
+[259qv] j g d [259qc] j g d [259qx] j g d [259qc] j g d
+[158wx] g d a [158wz] g d a [158wl] g d a [158wk] g d a
+
+# VI. Cadenza e Coda Angelica (Desvanecimiento celestial)
+[48qx] j g d [zc] x z l [kl] j h g [fg] d s a
+[48q] [tu] [ps] [df] [jl] [zx] [m]
+m b x m
+[48qetixm]
