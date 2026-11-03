@@ -86,7 +86,7 @@ var shutting_down = false
 var _midi_dialog_target: String = ""
 const SETTINGS_PATH = "user://studio_settings.cfg"
 var settings_path: String = SETTINGS_PATH
-var _loading_settings: bool = false
+var _loading_settings: bool = true
 
 func _ready() -> void:
 	Engine.max_fps = 60
@@ -186,6 +186,8 @@ func _ready() -> void:
 			menu.song_title.text = "%s  /  88 Teclas" % audio.get_current_instrument_name()
 	if DisplayServer.get_name() != "headless":
 		load_user_settings(settings_path)
+	else:
+		_loading_settings = false
 	get_window().files_dropped.connect(_on_files_dropped)
 	_sync_creator_song_title()
 
@@ -729,9 +731,11 @@ func save_user_settings(path: String = settings_path) -> void:
 
 func load_user_settings(path: String = settings_path) -> bool:
 	if not FileAccess.file_exists(path):
+		_loading_settings = false
 		return false
 	var cfg = ConfigFile.new()
 	if cfg.load(path) != OK:
+		_loading_settings = false
 		return false
 	_loading_settings = true
 	var col_str = str(cfg.get_value("appearance", "active_color", "#" + active_color.to_html(false)))
