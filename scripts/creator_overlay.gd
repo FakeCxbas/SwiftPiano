@@ -121,6 +121,8 @@ var _last_live_notes: Array[int] = []
 
 var hud_panel: PanelContainer
 var hud_style: StyleBoxFlat
+var hud_glass_rect: ColorRect
+var hud_glass_mat: ShaderMaterial
 var prev_labels: Array[Label] = []
 var current_step_panel: PanelContainer
 var current_step_style: StyleBoxFlat
@@ -329,6 +331,7 @@ func _build_branding_card() -> void:
 	channel_label.add_theme_font_override("font", bold_font)
 	channel_label.add_theme_font_size_override("font_size", 14)
 	channel_label.add_theme_color_override("font_color", Color("#FFFFFF"))
+	channel_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	header_row.add_child(channel_label)
 
 	tag_panel = PanelContainer.new()
@@ -369,6 +372,8 @@ func _build_branding_card() -> void:
 	song_label.visible = not song_text.is_empty()
 	song_label.add_theme_font_size_override("font_size", 13)
 	song_label.add_theme_color_override("font_color", Color("#F8FAFC"))
+	song_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	song_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	vbox.add_child(song_label)
 	
 	subtitle_label = Label.new()
@@ -377,6 +382,7 @@ func _build_branding_card() -> void:
 	subtitle_label.text = subtitle_text
 	subtitle_label.add_theme_font_size_override("font_size", 11)
 	subtitle_label.add_theme_color_override("font_color", Color("#94A3B8"))
+	subtitle_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	vbox.add_child(subtitle_label)
 
 func _build_live_sheet_hud() -> void:
@@ -385,38 +391,67 @@ func _build_live_sheet_hud() -> void:
 	hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	hud_style = StyleBoxFlat.new()
-	hud_style.bg_color = Color(0.05, 0.06, 0.09, 0.82)
-	hud_style.set_corner_radius_all(14)
+	hud_style.bg_color = Color(0.04, 0.05, 0.08, 0.55)
+	hud_style.set_corner_radius_all(16)
 	hud_style.set_border_width_all(1)
-	hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
-	hud_style.shadow_size = 10
-	hud_style.shadow_color = Color(0.0, 0.0, 0.0, 0.42)
-	hud_style.shadow_offset = Vector2(0, 4)
-	hud_style.content_margin_left = 16
-	hud_style.content_margin_right = 16
-	hud_style.content_margin_top = 6
-	hud_style.content_margin_bottom = 8
+	hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
+	hud_style.shadow_size = 24
+	hud_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	hud_style.shadow_offset = Vector2(0, 6)
+	hud_style.content_margin_left = 0
+	hud_style.content_margin_right = 0
+	hud_style.content_margin_top = 0
+	hud_style.content_margin_bottom = 0
 	hud_panel.add_theme_stylebox_override("panel", hud_style)
 	hud_panel.draw.connect(_draw_hud_progress)
 	add_child(hud_panel)
 	
+	hud_glass_rect = ColorRect.new()
+	hud_glass_rect.name = "HudGlassBackground"
+	hud_glass_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_glass_mat = ShaderMaterial.new()
+	hud_glass_mat.shader = LIQUID_GLASS_SHADER
+	hud_glass_mat.set_shader_parameter("size", Vector2(700.0, 48.0))
+	hud_glass_mat.set_shader_parameter("glass_tint", Color(0.05, 0.07, 0.12, 0.55))
+	hud_glass_mat.set_shader_parameter("rim_color", Color(active_color.r, active_color.g, active_color.b, 0.35))
+	hud_glass_mat.set_shader_parameter("corner_radius", 16.0)
+	hud_glass_rect.material = hud_glass_mat
+	hud_panel.add_child(hud_glass_rect)
+
+	hud_panel.resized.connect(func():
+		if hud_glass_mat != null and hud_panel != null:
+			hud_glass_mat.set_shader_parameter("size", hud_panel.size)
+	)
+
+	var hud_margin = MarginContainer.new()
+	hud_margin.name = "HudMargin"
+	hud_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_margin.add_theme_constant_override("margin_left", 16)
+	hud_margin.add_theme_constant_override("margin_right", 16)
+	hud_margin.add_theme_constant_override("margin_top", 6)
+	hud_margin.add_theme_constant_override("margin_bottom", 8)
+	hud_panel.add_child(hud_margin)
+
 	var inner = Control.new()
 	inner.name = "HudInner"
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inner.clip_contents = true
-	hud_panel.add_child(inner)
+	hud_margin.add_child(inner)
 	
 	# Current step capsule (step_index) - mathematically locked to exact center of inner
 	current_step_panel = PanelContainer.new()
 	current_step_panel.name = "CurrentStepCapsule"
 	current_step_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	current_step_style = StyleBoxFlat.new()
-	current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.24)
-	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.95)
+	current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
+	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
 	current_step_style.set_border_width_all(1)
-	current_step_style.set_corner_radius_all(8)
-	current_step_style.content_margin_left = 12
-	current_step_style.content_margin_right = 12
+	current_step_style.set_corner_radius_all(10)
+	current_step_style.shadow_size = 12
+	current_step_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+	current_step_style.shadow_offset = Vector2(0, 2)
+	current_step_style.content_margin_left = 14
+	current_step_style.content_margin_right = 14
 	current_step_style.content_margin_top = 3
 	current_step_style.content_margin_bottom = 3
 	current_step_panel.add_theme_stylebox_override("panel", current_step_style)
@@ -449,7 +484,7 @@ func _build_live_sheet_hud() -> void:
 	left_box.anchor_bottom = 1.0
 	left_box.offset_right = -72.0
 	left_box.alignment = BoxContainer.ALIGNMENT_END
-	left_box.add_theme_constant_override("separation", 6)
+	left_box.add_theme_constant_override("separation", 8)
 	inner.add_child(left_box)
 	
 	prev_labels.clear()
@@ -459,7 +494,7 @@ func _build_live_sheet_hud() -> void:
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lbl.add_theme_font_size_override("font_size", 13)
-		lbl.add_theme_color_override("font_color", Color(0.72, 0.80, 0.90, PREV_ALPHAS[i]))
+		lbl.add_theme_color_override("font_color", Color(0.75, 0.82, 0.92, PREV_ALPHAS[i]))
 		left_box.add_child(lbl)
 		prev_labels.append(lbl)
 	
@@ -473,7 +508,7 @@ func _build_live_sheet_hud() -> void:
 	right_box.anchor_bottom = 1.0
 	right_box.offset_left = 72.0
 	right_box.alignment = BoxContainer.ALIGNMENT_BEGIN
-	right_box.add_theme_constant_override("separation", 6)
+	right_box.add_theme_constant_override("separation", 8)
 	inner.add_child(right_box)
 	
 	next_labels.clear()
@@ -629,17 +664,21 @@ func _draw_hud_progress() -> void:
 		return
 	var w = hud_panel.size.x
 	var h = hud_panel.size.y
-	var pad = 12.0
+	var pad = 16.0
 	var bar_w = maxf(0.0, w - pad * 2.0)
-	var bar_y = h - 3.0
-	hud_panel.draw_rect(Rect2(pad, bar_y, bar_w, 2.0), Color(1.0, 1.0, 1.0, 0.09), true)
+	var bar_y = h - 3.5
+	# Subtle glass rail
+	hud_panel.draw_rect(Rect2(pad, bar_y, bar_w, 2.0), Color(1.0, 1.0, 1.0, 0.08), true)
 	var ratio = 0.0
 	if not steps.is_empty():
 		ratio = clampf(float(step_index) / float(maxi(1, steps.size())), 0.0, 1.0)
 	elif not live_tokens.is_empty():
 		ratio = 1.0
 	if ratio > 0.0:
-		hud_panel.draw_rect(Rect2(pad, bar_y, bar_w * ratio, 2.0), Color(active_color.r, active_color.g, active_color.b, 0.92), true)
+		var fill_w = bar_w * ratio
+		hud_panel.draw_rect(Rect2(pad, bar_y, fill_w, 2.0), Color(active_color.r, active_color.g, active_color.b, 0.92), true)
+		if fill_w > 4.0:
+			hud_panel.draw_circle(Vector2(pad + fill_w, bar_y + 1.0), 2.2, Color(active_color.r, active_color.g, active_color.b, 0.85))
 
 func set_active_color(color: Color) -> void:
 	active_color = Color(color.r, color.g, color.b, 1.0)
@@ -651,6 +690,8 @@ func set_active_color(color: Color) -> void:
 func _apply_accent_colors() -> void:
 	if glass_mat != null:
 		glass_mat.set_shader_parameter("rim_color", Color(active_color.r, active_color.g, active_color.b, 0.40))
+	if hud_glass_mat != null:
+		hud_glass_mat.set_shader_parameter("rim_color", Color(active_color.r, active_color.g, active_color.b, 0.35))
 	if neon_beam != null:
 		neon_beam.active_color = active_color
 	if wave_badge != null:
@@ -678,10 +719,12 @@ func _apply_accent_colors() -> void:
 	if subtitle_label != null:
 		subtitle_label.add_theme_color_override("font_color", Color("#A0ACB9"))
 	if hud_style != null:
-		hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+		hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
+		hud_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
 	if current_step_style != null:
-		current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-		current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.90)
+		current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
+		current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+		current_step_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
 	if zen_toast_style != null:
 		zen_toast_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
 	_refresh_kps_combo_labels()
@@ -975,12 +1018,18 @@ func _layout_branding(animate: bool = false) -> void:
 		return
 	var vs = _effective_size()
 	branding_card.visible = branding_enabled
-	branding_card.reset_size()
-	var card_size = branding_card.get_combined_minimum_size()
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
+	
+	# Determine max allowable card width so long titles don't stretch indefinitely into the HUD
+	var max_card_w = minf(340.0, frame.size.x * 0.35)
 	if is_shorts_active:
-		card_size.x = minf(card_size.x, maxf(140.0, frame.size.x - 24.0))
+		max_card_w = minf(340.0, maxf(140.0, frame.size.x - 24.0))
+	
+	branding_card.custom_minimum_size = Vector2(0, 0)
+	branding_card.reset_size()
+	var card_size = branding_card.get_combined_minimum_size()
+	card_size.x = minf(card_size.x, max_card_w)
 	branding_card.size = card_size
 	
 	var margin_x = 14.0 if is_shorts_active else 28.0
@@ -1012,17 +1061,39 @@ func _layout_hud(animate: bool = false) -> void:
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
 	
-	var target_w = clampf(vs.x * 0.44, 680.0, 720.0)
+	var target_w = clampf(vs.x * 0.44, 520.0, 720.0)
 	if is_shorts_active:
 		target_w = clampf(frame.size.x - 20.0, 260.0, 480.0)
 	var target_h = 48.0
-	hud_panel.custom_minimum_size = Vector2(target_w, target_h)
-	hud_panel.size = Vector2(target_w, target_h)
 	
 	var center_x = frame.position.x + (frame.size.x - target_w) * 0.5
 	var top_y = 24.0 if zen_mode else (menu_height + 16.0)
 	if is_shorts_active and branding_enabled and branding_position in ["top_left", "top_right"]:
 		top_y = branding_target_pos.y + branding_card.size.y + 10.0
+	elif not is_shorts_active and hud_position != "above_piano":
+		if branding_enabled and branding_position == "top_left":
+			var min_hud_x = branding_target_pos.x + branding_card.size.x + 20.0
+			var max_hud_x = frame.end.x - (160.0 if kps_hud_enabled else 28.0)
+			var available = max_hud_x - min_hud_x
+			if available > 200.0:
+				target_w = minf(target_w, available)
+				var free_center = min_hud_x + (available - target_w) * 0.5
+				center_x = maxf(center_x, free_center)
+			else:
+				center_x = maxf(center_x, min_hud_x)
+		elif branding_enabled and branding_position == "top_right":
+			var max_hud_x = branding_target_pos.x - 20.0
+			var min_hud_x = frame.position.x + 28.0
+			var available = max_hud_x - min_hud_x
+			if available > 200.0:
+				target_w = minf(target_w, available)
+				var free_center = min_hud_x + (available - target_w) * 0.5
+				center_x = minf(center_x, free_center)
+			else:
+				center_x = minf(center_x, max_hud_x - target_w)
+	
+	hud_panel.custom_minimum_size = Vector2(target_w, target_h)
+	hud_panel.size = Vector2(target_w, target_h)
 	
 	var target_y = (vs.y * 0.8 - 58.0) if hud_position == "above_piano" else top_y
 	var target = Vector2(clampf(center_x, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - target_w - 8.0)), target_y)

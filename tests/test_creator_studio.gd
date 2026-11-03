@@ -56,6 +56,9 @@ func _run() -> void:
 	check(co.neon_beam != null and not co.neon_beam.visible, "NeonTopBeam hidden to prevent floating grey line bug")
 	check(co.branding_style.shadow_color.is_equal_approx(Color(0.0, 0.0, 0.0, 0.55)), "BrandingCard has deep liquid glass drop shadow")
 	check(co.glass_rect != null and co.glass_mat != null, "BrandingCard features authentic Liquid Glass shader background")
+	check(co.hud_glass_rect != null and co.hud_glass_mat != null, "LiveSheetHUD features authentic Liquid Glass shader background")
+	check(co.hud_style.border_color.a <= 0.35, "LiveSheetHUD border has subtle liquid glass rim")
+	check(co.hud_target_pos.x >= co.branding_target_pos.x + co.branding_card.size.x + 10.0, "LiveSheetHUD does not overlap with BrandingCard")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, app.menu.menu_height + 16.0), "BrandingCard sits below top menu when zen_mode is false")
 	
 	# Toggle Zen mode via '|' key
@@ -107,6 +110,12 @@ func _run() -> void:
 	app.step_index = 10
 	app._refresh_progress()
 	check(co.get_current_token() == "[Sqet]", "Step 10 displays exact token [Sqet] (got: %s)" % co.get_current_token())
+
+	# Test long song title layout overlap prevention
+	co.set_song_title("Touhou - Death WaltzLast Brutal Sister Flandre S UNTRANSPOSED")
+	co.arrange(app.size, app.menu.menu_height, false)
+	check(co.branding_card.size.x <= 340.0, "BrandingCard width is capped to 340px max on long song titles (got: %f)" % co.branding_card.size.x)
+	check(co.hud_target_pos.x >= co.branding_target_pos.x + co.branding_card.size.x + 10.0, "LiveSheetHUD does not overlap BrandingCard with long song title")
 
 	# 3. Verify global shortcuts Ctrl+B, Ctrl+H, Ctrl+Y, Ctrl+K do NOT trigger any musical notes
 	app.audio.stop_all()
