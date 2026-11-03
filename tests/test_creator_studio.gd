@@ -47,6 +47,9 @@ func _run() -> void:
 	# Check BrandingCard defaults & positioning when zen_mode == false vs true
 	var co = app.creator_overlay
 	check(co.branding_enabled and co.branding_card.visible, "BrandingCard enabled and visible by default")
+	check(co.badge_icon != null and co.badge_icon.text == "♪", "BrandingCard features illuminated music note badge")
+	check(co.tag_panel != null and co.tag_label != null and co.tag_label.text == "PIANO", "BrandingCard features subtle tag pill")
+	check(co.divider_panel != null, "BrandingCard features translucent dividing hairline")
 	check(co.channel_label.text == "@DragonCxbas", "Default channel label is @DragonCxbas")
 	check(co.subtitle_label.text == "Virtual Piano Sheet in Description", "Default subtitle CTA is set")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, app.menu.menu_height + 16.0), "BrandingCard sits below top menu when zen_mode is false")
@@ -278,6 +281,49 @@ func _run() -> void:
 	send_key(app, KEY_P, true, true)
 	send_key(app, KEY_P, false, true)
 	check(app.bot_enabled == false and not app.sources.has("bot"), "Second Ctrl+P pauses Bot Showcase and releases bot notes")
+	
+	# Test Bot Showcase completion with auto_loop_enabled == false vs true
+	check(app.menu.auto_loop_btn != null, "auto_loop_btn present in studio_menu")
+	check(app.auto_loop_enabled == true, "auto_loop_enabled is true by default (classic loop)")
+	check(app.menu.auto_loop_btn.text.contains("En bucle"), "auto_loop_btn displays 'En bucle' by default")
+	
+	# Toggle auto_loop_btn to false (Mantener final)
+	app.menu.auto_loop_btn.pressed.emit()
+	check(app.auto_loop_enabled == false, "Clicking auto_loop_btn switches to Mantener final (false)")
+	check(app.menu.auto_loop_btn.text.contains("Mantener final"), "auto_loop_btn displays 'Mantener final' when false")
+
+	# Bot mode completion with auto_loop_enabled == false
+	app.step_index = app.steps.size() - 1
+	app.bot_enabled = true
+	app._bot_elapsed = app._bot_current_delay + 0.01
+	app._process(0.01)
+	check(app.bot_enabled == false, "Bot finishes and stops automatically at last step when auto_loop_enabled is false")
+	check(app.step_index == app.steps.size() - 1, "Bot holds at last step index when auto_loop_enabled is false")
+	check(co.get_current_token() == "[Sqet]", "Sheet HUD retains last token [Sqet] when song finishes")
+	check(app.next_step.text.contains("Fin de canción"), "Next step label indicates song completion")
+
+	# Interactive Auto mode note advancement with auto_loop_enabled == false
+	app.auto_enabled = true
+	app.step_index = app.steps.size() - 1
+	send_key(app, KEY_1, true)
+	send_key(app, KEY_1, false)
+	check(app.step_index == app.steps.size() - 1, "Auto mode note play holds at last step when auto_loop_enabled is false")
+	check(co.get_current_token() == "[Sqet]", "Sheet HUD maintains last step lyrics/token on subsequent note keys")
+	
+	# Toggle auto_loop_btn back to true
+	app.menu.auto_loop_btn.pressed.emit()
+	check(app.auto_loop_enabled == true, "Clicking auto_loop_btn enables auto_loop_enabled")
+	check(app.menu.auto_loop_btn.text.contains("En bucle"), "auto_loop_btn displays 'En bucle' when active")
+	
+	# Interactive Auto mode note advancement with auto_loop_enabled == true
+	send_key(app, KEY_1, true)
+	send_key(app, KEY_1, false)
+	check(app.step_index == 0, "Auto mode wraps back to step 0 when auto_loop_enabled is true")
+	check(co.get_current_token() == "[@(YD]", "Sheet HUD wraps to step 0 token when loop is enabled")
+
+	# Restore auto_loop_enabled to true and auto_enabled to false
+	app.set_auto_loop_enabled(true)
+	app.auto_enabled = false
 	app.set_bot_bpm(120.0)
 
 	# 11. Verify Color & Studio Settings Persistence (save_user_settings / load_user_settings)
@@ -293,6 +339,7 @@ func _run() -> void:
 	app.set_camera_shake_enabled(true)
 	app.set_bot_bpm(155.0)
 	app.set_creator_texts("@TestCreator", "Custom Persistent Subtitle")
+	app.set_auto_loop_enabled(false)
 	app.save_user_settings(test_cfg_path)
 	check(FileAccess.file_exists(test_cfg_path), "Settings config file saved to user://")
 
@@ -307,6 +354,7 @@ func _run() -> void:
 	app.set_camera_shake_enabled(false)
 	app.set_bot_bpm(120.0)
 	app.set_creator_texts("@DragonCxbas", "Virtual Piano Sheet in Description")
+	app.set_auto_loop_enabled(true)
 
 	app.load_user_settings(test_cfg_path)
 	check(app.active_color.is_equal_approx(custom_color), "Persisted active_color restored accurately")
@@ -322,6 +370,7 @@ func _run() -> void:
 	check(app.camera_shake_enabled == true, "Persisted camera_shake_enabled restored")
 	check(is_equal_approx(app.bot_bpm, 155.0), "Persisted bot_bpm restored")
 	check(co.channel_text == "@TestCreator" and app.menu.channel_field.text == "@TestCreator", "Persisted channel_text restored")
+	check(app.auto_loop_enabled == false and app.menu.current_auto_loop == false, "Persisted auto_loop_enabled (false) restored")
 	# 8. Verify editable song_title and song_field two-way synchronization
 	check(app.menu.song_title is LineEdit, "Top bar song_title is an interactive LineEdit")
 	check(app.menu.song_field is LineEdit, "Creator drawer song_field is an interactive LineEdit")

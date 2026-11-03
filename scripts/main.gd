@@ -47,6 +47,7 @@ var space_held = false
 var zen_mode: bool = false
 var shorts_mode: bool = false
 var key_range_mode: String = "full_88"
+var auto_loop_enabled: bool = true
 var kps_hud_enabled: bool = true
 var camera_shake_enabled: bool = false
 var trauma: float = 0.0
@@ -260,6 +261,7 @@ func _build_ui() -> void:
 	menu.creator_zen_requested.connect(func(): set_zen_mode(true))
 	menu.creator_branding_changed.connect(set_branding_config)
 	menu.creator_hud_changed.connect(set_hud_config)
+	menu.creator_auto_loop_toggled.connect(set_auto_loop_enabled)
 	menu.creator_shorts_toggled.connect(set_shorts_mode)
 	menu.creator_key_range_changed.connect(set_key_range_mode)
 	menu.creator_text_changed.connect(set_creator_texts)
@@ -633,7 +635,22 @@ func _trigger_bot_step() -> void:
 	_bot_note_released = false
 	var vels: Dictionary = step.get("velocities", {})
 	_press_source("bot", step.notes, vels)
-	step_index = (idx + 1) % steps.size()
+	if idx + 1 < steps.size():
+		step_index = idx + 1
+	elif auto_loop_enabled:
+		step_index = 0
+	else:
+		step_index = steps.size() - 1
+		set_bot_enabled(false)
+		_refresh_progress()
+		return
+	_refresh_progress()
+
+func set_auto_loop_enabled(enabled: bool) -> void:
+	auto_loop_enabled = enabled
+	if menu != null:
+		menu.set_creator_auto_loop(auto_loop_enabled, false)
+	save_user_settings()
 	_refresh_progress()
 
 func set_bot_enabled(enabled: bool) -> void:
@@ -702,6 +719,7 @@ func save_user_settings(path: String = settings_path) -> void:
 		cfg.set_value("creator", "key_range_mode", key_range_mode)
 		cfg.set_value("creator", "kps_hud_enabled", kps_hud_enabled)
 		cfg.set_value("creator", "camera_shake_enabled", camera_shake_enabled)
+		cfg.set_value("creator", "auto_loop_enabled", auto_loop_enabled)
 		cfg.set_value("creator", "bot_bpm", bot_bpm)
 		cfg.set_value("creator", "channel_text", creator_overlay.channel_text)
 		cfg.set_value("creator", "subtitle_text", creator_overlay.subtitle_text)
@@ -750,6 +768,8 @@ func load_user_settings(path: String = settings_path) -> bool:
 		set_key_range_mode(k_mode)
 		set_kps_hud_enabled(kps_en)
 		set_camera_shake_enabled(shake_en)
+		var loop_en = bool(cfg.get_value("creator", "auto_loop_enabled", true))
+		set_auto_loop_enabled(loop_en)
 		set_bot_bpm(saved_bpm)
 		set_creator_texts(ch_txt, sub_txt)
 		if menu != null:
@@ -906,10 +926,11 @@ func _set_volume(value: float) -> void:
 
 func _refresh_progress() -> void:
 	var t_info = "  (Transp: %+d)" % transposition if transposition != 0 else ""
+	var is_completed = not steps.is_empty() and step_index == steps.size() - 1
 	counter.text = ("ACTIVO" if auto_enabled else "EN PAUSA") + "  ·  Paso %d de %d%s" % [step_index + 1 if not steps.is_empty() else 0, steps.size(), t_info]
-	next_step.text = "Siguiente: " + step_labels[step_index] if not steps.is_empty() else "Pega una hoja para comenzar"
+	next_step.text = ("Fin de canción · Tab para reiniciar" if is_completed and not auto_loop_enabled else ("Siguiente: " + step_labels[step_index])) if not steps.is_empty() else "Pega una hoja para comenzar"
 	progress.max_value = maxi(1, steps.size())
-	progress.value = step_index
+	progress.value = (steps.size() if is_completed and not auto_loop_enabled else step_index)
 	if creator_overlay != null:
 		creator_overlay.update_steps(steps, step_index, true)
 
@@ -1162,7 +1183,12 @@ func _input(event: InputEvent) -> void:
 			transposition = base_t + user_transposition
 			var vels: Dictionary = step.get("velocities", {})
 			_press_source(code, step.notes, vels)
-			step_index = (step_index + 1) % steps.size()
+			if step_index + 1 < steps.size():
+				step_index += 1
+			elif auto_loop_enabled:
+				step_index = 0
+			else:
+				step_index = steps.size() - 1
 			_refresh_progress()
 	elif not auto_enabled:
 		var midi = Keymap.manual_note(code, event.shift_pressed, event.ctrl_pressed)

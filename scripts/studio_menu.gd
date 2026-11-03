@@ -19,6 +19,7 @@ signal creator_shorts_toggled(enabled: bool)
 signal creator_key_range_changed(mode: String)
 signal creator_text_changed(channel: String, subtitle: String)
 signal song_title_edited(new_title: String)
+signal creator_auto_loop_toggled(enabled: bool)
 signal creator_kps_toggled(enabled: bool)
 signal creator_shake_toggled(enabled: bool)
 signal creator_rec_toggled()
@@ -134,6 +135,8 @@ var hud_toggle_btn: Button
 var hud_pos_buttons = {}
 var current_hud_enabled: bool = true
 var current_hud_pos: String = "top_center"
+var auto_loop_btn: Button
+var current_auto_loop: bool = true
 var shorts_toggle_btn: Button
 var current_shorts_enabled: bool = false
 var kps_toggle_btn: Button
@@ -828,6 +831,13 @@ func _build_appearance() -> void:
 		hud_pos_buttons[pos_id] = pos_btn
 		hud_row.add_child(pos_btn)
 	
+	auto_loop_btn = button("🔁 Bucle: En bucle")
+	auto_loop_btn.clip_text = false
+	auto_loop_btn.custom_minimum_size = Vector2(175, 34)
+	auto_loop_btn.pressed.connect(func():
+		set_creator_auto_loop(not current_auto_loop, true))
+	hud_row.add_child(auto_loop_btn)
+	
 	# 3. Shorts 9:16 Frame, KPS/Combo HUD, Camera Shake & Audio Recorder
 	var shorts_row = HFlowContainer.new()
 	shorts_row.add_theme_constant_override("h_separation", 8)
@@ -1048,6 +1058,12 @@ func set_creator_hud(enabled: bool, pos: String = "top_center", emit_sig: bool =
 	if emit_sig:
 		creator_hud_changed.emit(current_hud_enabled, "hidden" if not current_hud_enabled else current_hud_pos)
 
+func set_creator_auto_loop(enabled: bool, emit_sig: bool = false) -> void:
+	current_auto_loop = enabled
+	_refresh_creator_styles()
+	if emit_sig:
+		creator_auto_loop_toggled.emit(current_auto_loop)
+
 func set_creator_shorts(enabled: bool, emit_sig: bool = false) -> void:
 	current_shorts_enabled = enabled
 	_refresh_creator_styles()
@@ -1108,6 +1124,9 @@ func _refresh_creator_styles() -> void:
 	var active_h_pos = "hidden" if not current_hud_enabled else current_hud_pos
 	for k in hud_pos_buttons:
 		StudioSkin._button(hud_pos_buttons[k], k == active_h_pos, chosen_color)
+	if auto_loop_btn != null:
+		auto_loop_btn.text = "🔁 Bucle: En bucle" if current_auto_loop else "🔁 Fin: Mantener final"
+		StudioSkin._button(auto_loop_btn, current_auto_loop, chosen_color)
 	if shorts_toggle_btn != null:
 		StudioSkin._button(shorts_toggle_btn, current_shorts_enabled, chosen_color)
 	if kps_toggle_btn != null:
