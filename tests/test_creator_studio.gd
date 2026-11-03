@@ -52,9 +52,9 @@ func _run() -> void:
 	check(co.divider_panel != null, "BrandingCard features translucent dividing hairline")
 	check(co.channel_label.text == "@DragonCxbas", "Default channel label is @DragonCxbas")
 	check(co.subtitle_label.text == "Virtual Piano Sheet in Description", "Default subtitle CTA is set")
-	check(not co.branding_style.border_color.is_equal_approx(co.active_color), "BrandingCard border is neutral glass rim, not colored contour")
-	check(is_equal_approx(co.branding_style.border_color.r, 1.0) and is_equal_approx(co.branding_style.border_color.g, 1.0) and is_equal_approx(co.branding_style.border_color.b, 1.0), "BrandingCard border rim is neutral white tint")
-	check(is_equal_approx(co.divider_style.bg_color.r, 1.0), "Divider hairline is neutral translucent")
+	check(co.branding_style.border_color.a <= 0.40, "BrandingCard border is soft translucent neon rim, not opaque contour")
+	check(co.neon_beam != null, "BrandingCard features NeonTopBeam laser glow")
+	check(co.branding_style.shadow_color.is_equal_approx(Color(co.active_color.r, co.active_color.g, co.active_color.b, 0.28)), "BrandingCard has diffuse neon ambient glow")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, app.menu.menu_height + 16.0), "BrandingCard sits below top menu when zen_mode is false")
 	
 	# Toggle Zen mode via '|' key
@@ -365,7 +365,7 @@ func _run() -> void:
 	check(is_equal_approx(app.volume_slider.value, 45.0), "Persisted volume restored to 45%")
 	check(app.volume_label.text == "45%", "Persisted volume label restored")
 	check(co.wave_badge != null and co.wave_badge.get_parent() == co.accent_pill, "LiveWaveBadge present and attached to accent_pill")
-	check(co.branding_style.border_color.a <= 0.12, "Branding card uses subtle specular border instead of harsh lines")
+	check(co.branding_style.border_color.a <= 0.40, "Branding card uses translucent neon border instead of harsh solid line")
 	check(app.active_color.is_equal_approx(custom_color), "Persisted active_color restored accurately")
 	check(app.menu.chosen_color.is_equal_approx(custom_color), "Menu ColorPickerButton synced with persisted active_color")
 	check(app.rainbow == true and app.menu.rainbow_toggle.button_pressed == true, "Persisted rainbow mode restored and synced with menu")
