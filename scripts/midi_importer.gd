@@ -136,7 +136,7 @@ func parse_bytes(bytes: PackedByteArray, title: String = "MIDI") -> Dictionary:
 
 	raw_notes.sort_custom(func(a, b): return a[0] < b[0])
 	var sec_per_tick = (float(us_per_qn) / 1000000.0) / float(maxi(1, division))
-	var chord_tolerance_ticks = clampi(int(0.038 / maxf(0.00001, sec_per_tick)), 0, int(division * 0.125))
+	var chord_tolerance_ticks = clampi(int(0.065 / maxf(0.00001, sec_per_tick)), 0, int(division * 0.16))
 
 	var onsets: Dictionary = {}
 	var cluster_tick = -1
