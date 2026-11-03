@@ -797,7 +797,7 @@ func _sync_creator_song_title() -> void:
 		creator_overlay.set_song_title(user_custom_title)
 		return
 	if steps.is_empty():
-		creator_overlay.set_song_title("Interpretación en Vivo")
+		creator_overlay.set_song_title("")
 		return
 	var meta_re = RegEx.new()
 	meta_re.compile("(?i)^(?:title|song|titulo|título|canción)\\s*:\\s*(.+)$")
@@ -812,7 +812,7 @@ func _sync_creator_song_title() -> void:
 	elif menu != null and not menu.song_title.text.ends_with("/  88 Teclas") and not menu.song_title.text.strip_edges().is_empty():
 		creator_overlay.set_song_title(menu.song_title.text)
 	else:
-		creator_overlay.set_song_title("Interpretación en Vivo")
+		creator_overlay.set_song_title("")
 
 func _menu_action(id: String) -> void:
 	_blur()
