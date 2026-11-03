@@ -283,6 +283,7 @@ func _build_branding_card() -> void:
 	branding_card.add_child(margin_container)
 
 	var hbox = HBoxContainer.new()
+	hbox.name = "BrandingHBox"
 	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_theme_constant_override("separation", 12)
 	margin_container.add_child(hbox)
@@ -315,12 +316,16 @@ func _build_branding_card() -> void:
 	accent_pill.add_child(badge_icon)
 	
 	var vbox = VBoxContainer.new()
+	vbox.name = "BrandingVBox"
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.custom_minimum_size = Vector2(160, 0)
 	vbox.add_theme_constant_override("separation", 2)
 	hbox.add_child(vbox)
 	
 	var header_row = HBoxContainer.new()
 	header_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_row.add_theme_constant_override("separation", 8)
 	vbox.add_child(header_row)
 
@@ -328,6 +333,7 @@ func _build_branding_card() -> void:
 	channel_label.name = "ChannelLabel"
 	channel_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	channel_label.text = channel_text
+	channel_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	channel_label.add_theme_font_override("font", bold_font)
 	channel_label.add_theme_font_size_override("font_size", 14)
 	channel_label.add_theme_color_override("font_color", Color("#FFFFFF"))
@@ -370,6 +376,7 @@ func _build_branding_card() -> void:
 	song_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_label.text = song_text
 	song_label.visible = not song_text.is_empty()
+	song_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	song_label.add_theme_font_size_override("font_size", 13)
 	song_label.add_theme_color_override("font_color", Color("#F8FAFC"))
 	song_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -380,6 +387,7 @@ func _build_branding_card() -> void:
 	subtitle_label.name = "SubtitleLabel"
 	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	subtitle_label.text = subtitle_text
+	subtitle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	subtitle_label.add_theme_font_size_override("font_size", 11)
 	subtitle_label.add_theme_color_override("font_color", Color("#94A3B8"))
 	subtitle_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -426,6 +434,8 @@ func _build_live_sheet_hud() -> void:
 	var hud_margin = MarginContainer.new()
 	hud_margin.name = "HudMargin"
 	hud_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hud_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	hud_margin.add_theme_constant_override("margin_left", 16)
 	hud_margin.add_theme_constant_override("margin_right", 16)
 	hud_margin.add_theme_constant_override("margin_top", 6)
@@ -435,6 +445,8 @@ func _build_live_sheet_hud() -> void:
 	var inner = Control.new()
 	inner.name = "HudInner"
 	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inner.clip_contents = true
 	hud_margin.add_child(inner)
 	
@@ -443,19 +455,19 @@ func _build_live_sheet_hud() -> void:
 	current_step_panel.name = "CurrentStepCapsule"
 	current_step_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	current_step_style = StyleBoxFlat.new()
-	current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
-	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+	current_step_style.bg_color = Color(0.08, 0.10, 0.16, 0.65)
+	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	current_step_style.set_border_width_all(1)
 	current_step_style.set_corner_radius_all(10)
-	current_step_style.shadow_size = 12
-	current_step_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+	current_step_style.shadow_size = 8
+	current_step_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
 	current_step_style.shadow_offset = Vector2(0, 2)
 	current_step_style.content_margin_left = 14
 	current_step_style.content_margin_right = 14
 	current_step_style.content_margin_top = 3
 	current_step_style.content_margin_bottom = 3
 	current_step_panel.add_theme_stylebox_override("panel", current_step_style)
-	current_step_panel.custom_minimum_size = Vector2(120.0, 34.0)
+	current_step_panel.custom_minimum_size = Vector2(100.0, 32.0)
 	current_step_panel.anchor_left = 0.5
 	current_step_panel.anchor_right = 0.5
 	current_step_panel.anchor_top = 0.5
@@ -722,9 +734,9 @@ func _apply_accent_colors() -> void:
 		hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
 		hud_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
 	if current_step_style != null:
-		current_step_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
-		current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
-		current_step_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+		current_step_style.bg_color = Color(0.08, 0.10, 0.16, 0.65)
+		current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+		current_step_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
 	if zen_toast_style != null:
 		zen_toast_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
 	_refresh_kps_combo_labels()
@@ -982,12 +994,12 @@ func _refresh_hud_tokens(animate_pulse: bool = false) -> void:
 			next_labels[i].visible = false
 	
 	if animate_pulse and current_step_panel != null:
-		current_step_panel.modulate = Color(1.45, 1.45, 1.45, 1.0)
+		current_step_panel.modulate = Color(1.20, 1.20, 1.20, 1.0)
 		if is_inside_tree():
 			if _step_pulse_tween != null and _step_pulse_tween.is_valid():
 				_step_pulse_tween.kill()
 			_step_pulse_tween = create_tween()
-			_step_pulse_tween.tween_property(current_step_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			_step_pulse_tween.tween_property(current_step_panel, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	
 	if hud_panel != null:
 		hud_panel.queue_redraw()
@@ -1021,16 +1033,20 @@ func _layout_branding(animate: bool = false) -> void:
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
 	
-	# Determine max allowable card width so long titles don't stretch indefinitely into the HUD
+	# Determine minimum and maximum allowable card width so typography stays clean and readable
+	var min_card_w = 230.0
 	var max_card_w = minf(340.0, frame.size.x * 0.35)
 	if is_shorts_active:
-		max_card_w = minf(340.0, maxf(140.0, frame.size.x - 24.0))
+		min_card_w = minf(220.0, frame.size.x - 24.0)
+		max_card_w = minf(340.0, maxf(180.0, frame.size.x - 24.0))
 	
-	branding_card.custom_minimum_size = Vector2(0, 0)
+	branding_card.custom_minimum_size = Vector2(min_card_w, 52.0)
 	branding_card.reset_size()
 	var card_size = branding_card.get_combined_minimum_size()
-	card_size.x = minf(card_size.x, max_card_w)
+	card_size.x = clampf(card_size.x, min_card_w, max_card_w)
 	branding_card.size = card_size
+	if glass_mat != null:
+		glass_mat.set_shader_parameter("size", card_size)
 	
 	var margin_x = 14.0 if is_shorts_active else 28.0
 	var top_y = 24.0 if zen_mode else (menu_height + 16.0)
@@ -1061,7 +1077,7 @@ func _layout_hud(animate: bool = false) -> void:
 	var frame = get_shorts_rect(vs)
 	var is_shorts_active = shorts_mode and vs.x > vs.y
 	
-	var target_w = clampf(vs.x * 0.44, 520.0, 720.0)
+	var target_w = clampf(vs.x * 0.44, 460.0, 720.0)
 	if is_shorts_active:
 		target_w = clampf(frame.size.x - 20.0, 260.0, 480.0)
 	var target_h = 48.0
@@ -1072,28 +1088,32 @@ func _layout_hud(animate: bool = false) -> void:
 		top_y = branding_target_pos.y + branding_card.size.y + 10.0
 	elif not is_shorts_active and hud_position != "above_piano":
 		if branding_enabled and branding_position == "top_left":
-			var min_hud_x = branding_target_pos.x + branding_card.size.x + 20.0
+			var min_hud_x = branding_target_pos.x + branding_card.size.x + 18.0
 			var max_hud_x = frame.end.x - (160.0 if kps_hud_enabled else 28.0)
-			var available = max_hud_x - min_hud_x
-			if available > 200.0:
-				target_w = minf(target_w, available)
-				var free_center = min_hud_x + (available - target_w) * 0.5
-				center_x = maxf(center_x, free_center)
-			else:
-				center_x = maxf(center_x, min_hud_x)
+			if center_x < min_hud_x:
+				var max_symmetric_w = (frame.size.x * 0.5 - (min_hud_x - frame.position.x)) * 2.0
+				if max_symmetric_w >= 400.0:
+					target_w = minf(target_w, max_symmetric_w)
+					center_x = frame.position.x + (frame.size.x - target_w) * 0.5
+				else:
+					center_x = min_hud_x
+					target_w = minf(target_w, max_hud_x - min_hud_x)
 		elif branding_enabled and branding_position == "top_right":
-			var max_hud_x = branding_target_pos.x - 20.0
+			var max_hud_x = branding_target_pos.x - 18.0
 			var min_hud_x = frame.position.x + 28.0
-			var available = max_hud_x - min_hud_x
-			if available > 200.0:
-				target_w = minf(target_w, available)
-				var free_center = min_hud_x + (available - target_w) * 0.5
-				center_x = minf(center_x, free_center)
-			else:
-				center_x = minf(center_x, max_hud_x - target_w)
+			if center_x + target_w > max_hud_x:
+				var max_symmetric_w = ((max_hud_x - frame.position.x) - frame.size.x * 0.5) * 2.0
+				if max_symmetric_w >= 400.0:
+					target_w = minf(target_w, max_symmetric_w)
+					center_x = frame.position.x + (frame.size.x - target_w) * 0.5
+				else:
+					center_x = maxf(min_hud_x, max_hud_x - target_w)
+					target_w = minf(target_w, max_hud_x - min_hud_x)
 	
 	hud_panel.custom_minimum_size = Vector2(target_w, target_h)
 	hud_panel.size = Vector2(target_w, target_h)
+	if hud_glass_mat != null:
+		hud_glass_mat.set_shader_parameter("size", Vector2(target_w, target_h))
 	
 	var target_y = (vs.y * 0.8 - 58.0) if hud_position == "above_piano" else top_y
 	var target = Vector2(clampf(center_x, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - target_w - 8.0)), target_y)
