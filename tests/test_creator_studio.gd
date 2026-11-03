@@ -343,6 +343,7 @@ func _run() -> void:
 	app.set_bot_bpm(155.0)
 	app.set_creator_texts("@TestCreator", "Custom Persistent Subtitle")
 	app.set_auto_loop_enabled(false)
+	app._set_volume(45.0)
 	app.save_user_settings(test_cfg_path)
 	check(FileAccess.file_exists(test_cfg_path), "Settings config file saved to user://")
 
@@ -358,8 +359,13 @@ func _run() -> void:
 	app.set_bot_bpm(120.0)
 	app.set_creator_texts("@DragonCxbas", "Virtual Piano Sheet in Description")
 	app.set_auto_loop_enabled(true)
+	app._set_volume(100.0)
 
 	app.load_user_settings(test_cfg_path)
+	check(is_equal_approx(app.volume_slider.value, 45.0), "Persisted volume restored to 45%")
+	check(app.volume_label.text == "45%", "Persisted volume label restored")
+	check(co.wave_badge != null and co.wave_badge.get_parent() == co.accent_pill, "LiveWaveBadge present and attached to accent_pill")
+	check(co.branding_style.border_color.a <= 0.12, "Branding card uses subtle specular border instead of harsh lines")
 	check(app.active_color.is_equal_approx(custom_color), "Persisted active_color restored accurately")
 	check(app.menu.chosen_color.is_equal_approx(custom_color), "Menu ColorPickerButton synced with persisted active_color")
 	check(app.rainbow == true and app.menu.rainbow_toggle.button_pressed == true, "Persisted rainbow mode restored and synced with menu")

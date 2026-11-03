@@ -9,6 +9,52 @@ const Keymap = preload("res://scripts/keymap_data.gd")
 const PREV_ALPHAS: Array[float] = [0.12, 0.22, 0.36]
 const NEXT_ALPHAS: Array[float] = [0.95, 0.72, 0.52, 0.36, 0.22]
 
+class LiveWaveBadge extends Control:
+	var bar_heights: Array[float] = [6.0, 14.0, 9.0, 15.0]
+	var bar_targets: Array[float] = [6.0, 14.0, 9.0, 15.0]
+	var active_color: Color = Color("#64e8d0")
+	var pulse_strength: float = 0.0
+	
+	func _init() -> void:
+		custom_minimum_size = Vector2(32, 32)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	func pulse(amount: float = 0.6) -> void:
+		pulse_strength = clampf(pulse_strength + amount, 0.0, 1.6)
+		bar_targets[0] = randf_range(10.0, 18.0)
+		bar_targets[1] = randf_range(15.0, 24.0)
+		bar_targets[2] = randf_range(9.0, 18.0)
+		bar_targets[3] = randf_range(13.0, 22.0)
+		queue_redraw()
+	
+	func _process(delta: float) -> void:
+		var changed = false
+		var base_h = [6.0, 14.0, 9.0, 15.0]
+		for i in range(4):
+			bar_targets[i] = lerpf(bar_targets[i], base_h[i], delta * 5.0)
+			if absf(bar_heights[i] - bar_targets[i]) > 0.15:
+				bar_heights[i] = lerpf(bar_heights[i], bar_targets[i], delta * 12.0)
+				changed = true
+		if pulse_strength > 0.01:
+			pulse_strength = lerpf(pulse_strength, 0.0, delta * 4.0)
+			changed = true
+		if changed:
+			queue_redraw()
+	
+	func _draw() -> void:
+		var w = size.x
+		var h = size.y
+		var bar_w = 2.6
+		var spacing = 2.4
+		var total_w = 4.0 * bar_w + 3.0 * spacing
+		var start_x = (w - total_w) * 0.5
+		var c = Color(active_color.r, active_color.g, active_color.b, 0.95)
+		for i in range(4):
+			var bh = clampf(bar_heights[i], 3.0, h - 8.0)
+			var bx = start_x + float(i) * (bar_w + spacing)
+			var by = (h - bh) * 0.5
+			draw_rect(Rect2(bx, by, bar_w, bh), c, true)
+
 var active_color: Color = Color("#64e8d0")
 var zen_mode: bool = false
 var menu_height: float = 112.0
@@ -24,6 +70,7 @@ var branding_card: PanelContainer
 var branding_style: StyleBoxFlat
 var accent_pill: Panel
 var accent_pill_style: StyleBoxFlat
+var wave_badge: LiveWaveBadge
 var badge_icon: Label
 var tag_panel: PanelContainer
 var tag_style: StyleBoxFlat
@@ -183,7 +230,7 @@ func _build_branding_card() -> void:
 	accent_pill = Panel.new()
 	accent_pill.name = "AccentPill"
 	accent_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	accent_pill.custom_minimum_size = Vector2(30, 30)
+	accent_pill.custom_minimum_size = Vector2(32, 32)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
 	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
@@ -195,19 +242,20 @@ func _build_branding_card() -> void:
 	accent_pill.add_theme_stylebox_override("panel", accent_pill_style)
 	hbox.add_child(accent_pill)
 
+	wave_badge = LiveWaveBadge.new()
+	wave_badge.active_color = active_color
+	wave_badge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	accent_pill.add_child(wave_badge)
+
 	badge_icon = Label.new()
 	badge_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge_icon.text = "♪"
-	badge_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	badge_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge_icon.size = Vector2(30, 30)
-	badge_icon.add_theme_font_size_override("font_size", 13)
-	badge_icon.add_theme_color_override("font_color", active_color)
+	badge_icon.visible = false
 	accent_pill.add_child(badge_icon)
 	
 	var vbox = VBoxContainer.new()
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_theme_constant_override("separation", 3)
+	vbox.add_theme_constant_override("separation", 2)
 	hbox.add_child(vbox)
 	
 	var header_row = HBoxContainer.new()
@@ -220,7 +268,7 @@ func _build_branding_card() -> void:
 	channel_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	channel_label.text = channel_text
 	channel_label.add_theme_font_override("font", bold_font)
-	channel_label.add_theme_font_size_override("font_size", 14)
+	channel_label.add_theme_font_size_override("font_size", 13)
 	channel_label.add_theme_color_override("font_color", Color("#FFFFFF"))
 	header_row.add_child(channel_label)
 
@@ -228,9 +276,9 @@ func _build_branding_card() -> void:
 	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_style = StyleBoxFlat.new()
 	tag_style.bg_color = Color(1.0, 1.0, 1.0, 0.06)
-	tag_style.border_color = Color(1.0, 1.0, 1.0, 0.12)
+	tag_style.border_color = Color(1.0, 1.0, 1.0, 0.10)
 	tag_style.set_border_width_all(1)
-	tag_style.set_corner_radius_all(5)
+	tag_style.set_corner_radius_all(4)
 	tag_style.content_margin_left = 6
 	tag_style.content_margin_right = 6
 	tag_style.content_margin_top = 1
@@ -242,14 +290,14 @@ func _build_branding_card() -> void:
 	tag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_label.text = "PIANO"
 	tag_label.add_theme_font_size_override("font_size", 9)
-	tag_label.add_theme_color_override("font_color", Color("#A0ACB9"))
+	tag_label.add_theme_color_override("font_color", Color("#94A3B8"))
 	tag_panel.add_child(tag_label)
 
 	divider_panel = Panel.new()
 	divider_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	divider_panel.custom_minimum_size = Vector2(0, 1)
 	divider_style = StyleBoxFlat.new()
-	divider_style.bg_color = Color(1.0, 1.0, 1.0, 0.07)
+	divider_style.bg_color = Color(1.0, 1.0, 1.0, 0.05)
 	divider_panel.add_theme_stylebox_override("panel", divider_style)
 	vbox.add_child(divider_panel)
 	
@@ -257,8 +305,8 @@ func _build_branding_card() -> void:
 	song_label.name = "SongLabel"
 	song_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_label.text = song_text
-	song_label.add_theme_font_size_override("font_size", 13)
-	song_label.add_theme_color_override("font_color", Color("#EDF2FA"))
+	song_label.add_theme_font_size_override("font_size", 14)
+	song_label.add_theme_color_override("font_color", Color("#F8FAFC"))
 	vbox.add_child(song_label)
 	
 	subtitle_label = Label.new()
@@ -539,6 +587,9 @@ func set_active_color(color: Color) -> void:
 		hud_panel.queue_redraw()
 
 func _apply_accent_colors() -> void:
+	if wave_badge != null:
+		wave_badge.active_color = active_color
+		wave_badge.queue_redraw()
 	if branding_style != null:
 		branding_style.border_color = Color(1.0, 1.0, 1.0, 0.09)
 	if accent_pill_style != null:
@@ -722,9 +773,11 @@ func on_note_triggered(pitches: Array = []) -> void:
 
 	# 1. Subtle brightness & scale pulse on BrandingCard left pill
 	if accent_pill != null and branding_enabled:
+		if wave_badge != null:
+			wave_badge.pulse(0.6)
 		accent_pill.pivot_offset = accent_pill.size * 0.5
-		accent_pill.modulate = Color(1.55, 1.55, 1.55, 1.0)
-		accent_pill.scale = Vector2(1.25, 1.08)
+		accent_pill.modulate = Color(1.4, 1.4, 1.4, 1.0)
+		accent_pill.scale = Vector2(1.08, 1.08)
 		if is_inside_tree():
 			if _pill_tween != null and _pill_tween.is_valid():
 				_pill_tween.kill()
