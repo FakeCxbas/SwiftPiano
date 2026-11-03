@@ -114,7 +114,11 @@ func _run() -> void:
 	# Test long song title layout overlap prevention
 	co.set_song_title("Touhou - Death WaltzLast Brutal Sister Flandre S UNTRANSPOSED")
 	co.arrange(app.size, app.menu.menu_height, false)
+	await process_frame
 	check(co.branding_card.size.x <= 340.0, "BrandingCard width is capped to 340px max on long song titles (got: %f)" % co.branding_card.size.x)
+	check(co.branding_card.size.x >= 220.0, "BrandingCard width is at least 220px to prevent text collapse (got: %f)" % co.branding_card.size.x)
+	check(co.channel_label.size.x > 50.0, "ChannelLabel text has visible non-zero width (got: %f)" % co.channel_label.size.x)
+	check(co.song_label.visible and co.song_label.size.x > 50.0, "SongLabel text has visible non-zero width (got: %f)" % co.song_label.size.x)
 	check(co.hud_target_pos.x >= co.branding_target_pos.x + co.branding_card.size.x + 10.0, "LiveSheetHUD does not overlap BrandingCard with long song title")
 
 	# 3. Verify global shortcuts Ctrl+B, Ctrl+H, Ctrl+Y, Ctrl+K do NOT trigger any musical notes
