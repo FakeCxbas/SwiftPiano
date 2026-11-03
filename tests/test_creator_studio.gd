@@ -52,9 +52,9 @@ func _run() -> void:
 	check(co.divider_panel != null and co.divider_panel.name == "NeonLaserDivider", "BrandingCard features NeonLaserDivider laser bloom")
 	check(co.channel_label.text == "@DragonCxbas", "Default channel label is @DragonCxbas")
 	check(co.subtitle_label.text == "Virtual Piano Sheet in Description", "Default subtitle CTA is set")
-	check(co.branding_style.border_color.a >= 0.60, "BrandingCard border has vibrant neon rim in active color")
-	check(co.neon_beam != null, "BrandingCard features NeonTopBeam laser glow")
-	check(co.branding_style.shadow_color.is_equal_approx(Color(co.active_color.r, co.active_color.g, co.active_color.b, 0.50)), "BrandingCard has intense neon ambient glow")
+	check(co.branding_style.border_color.a <= 0.35, "BrandingCard border has subtle liquid glass rim")
+	check(co.neon_beam != null, "BrandingCard features NeonTopBeam specular highlight")
+	check(co.branding_style.shadow_color.is_equal_approx(Color(0.0, 0.0, 0.0, 0.55)), "BrandingCard has deep liquid glass drop shadow")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, app.menu.menu_height + 16.0), "BrandingCard sits below top menu when zen_mode is false")
 	
 	# Toggle Zen mode via '|' key
@@ -365,7 +365,7 @@ func _run() -> void:
 	check(is_equal_approx(app.volume_slider.value, 45.0), "Persisted volume restored to 45%")
 	check(app.volume_label.text == "45%", "Persisted volume label restored")
 	check(co.wave_badge != null and co.wave_badge.get_parent() == co.accent_pill, "LiveWaveBadge present and attached to accent_pill")
-	check(co.branding_style.border_color.a >= 0.60, "Branding card uses vibrant neon border in active color")
+	check(co.branding_style.border_color.a <= 0.35, "Branding card uses subtle liquid glass rim")
 	check(app.active_color.is_equal_approx(custom_color), "Persisted active_color restored accurately")
 	check(app.menu.chosen_color.is_equal_approx(custom_color), "Menu ColorPickerButton synced with persisted active_color")
 	check(app.rainbow == true and app.menu.rainbow_toggle.button_pressed == true, "Persisted rainbow mode restored and synced with menu")
