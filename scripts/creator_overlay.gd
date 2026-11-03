@@ -60,35 +60,23 @@ class NeonTopBeam extends Control:
 	
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		visible = false
 	
 	func _draw() -> void:
-		var w = size.x
-		if w < 24.0:
-			return
-		var x1 = 16.0
-		var x2 = w - 16.0
-		if x2 <= x1:
-			return
-		# Liquid Glass top specular reflection: delicate light sheen
-		draw_line(Vector2(x1, 1.0), Vector2(x2, 1.0), Color(1.0, 1.0, 1.0, 0.16), 1.0)
-		# Subtle crimson refraction hint
-		var seg = (x2 - x1) * 0.45
-		draw_line(Vector2(x1 + 6.0, 1.0), Vector2(x1 + 6.0 + seg, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.20), 1.0)
+		pass
 
 class NeonLaserDivider extends Control:
 	var active_color: Color = Color("#64e8d0")
 	
 	func _init() -> void:
-		custom_minimum_size = Vector2(0, 6)
+		custom_minimum_size = Vector2(0, 0)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		visible = false
 	
 	func _draw() -> void:
-		var w = size.x
-		if w < 10.0:
-			return
-		var mid_y = size.y * 0.5
-		# Liquid Glass whisper hairline with subtle crimson tint
-		draw_line(Vector2(0, mid_y), Vector2(w, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.20), 1.0)
+		pass
+
+const LIQUID_GLASS_SHADER = preload("res://shaders/liquid_glass.gdshader")
 
 var active_color: Color = Color("#64e8d0")
 var zen_mode: bool = false
@@ -103,6 +91,8 @@ var subtitle_text: String = "Virtual Piano Sheet in Description"
 
 var branding_card: PanelContainer
 var branding_style: StyleBoxFlat
+var glass_rect: ColorRect
+var glass_mat: ShaderMaterial
 var neon_beam: NeonTopBeam
 var accent_pill: Panel
 var accent_pill_style: StyleBoxFlat
@@ -244,43 +234,70 @@ func _build_branding_card() -> void:
 	branding_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	branding_style = StyleBoxFlat.new()
-	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.82)
+	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.55)
 	branding_style.set_corner_radius_all(16)
 	branding_style.set_border_width_all(1)
 	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
-	branding_style.shadow_size = 20
+	branding_style.shadow_size = 24
 	branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
 	branding_style.shadow_offset = Vector2(0, 6)
-	branding_style.content_margin_left = 16
-	branding_style.content_margin_right = 18
-	branding_style.content_margin_top = 11
-	branding_style.content_margin_bottom = 11
+	branding_style.content_margin_left = 0
+	branding_style.content_margin_right = 0
+	branding_style.content_margin_top = 0
+	branding_style.content_margin_bottom = 0
 	branding_card.add_theme_stylebox_override("panel", branding_style)
 	add_child(branding_card)
 	
+	glass_rect = ColorRect.new()
+	glass_rect.name = "GlassBackground"
+	glass_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glass_mat = ShaderMaterial.new()
+	glass_mat.shader = LIQUID_GLASS_SHADER
+	glass_mat.set_shader_parameter("size", Vector2(280.0, 64.0))
+	glass_mat.set_shader_parameter("glass_tint", Color(0.05, 0.07, 0.12, 0.55))
+	glass_mat.set_shader_parameter("rim_color", Color(active_color.r, active_color.g, active_color.b, 0.40))
+	glass_mat.set_shader_parameter("corner_radius", 16.0)
+	glass_rect.material = glass_mat
+	branding_card.add_child(glass_rect)
+	
+	branding_card.resized.connect(func():
+		if glass_mat != null and branding_card != null:
+			glass_mat.set_shader_parameter("size", branding_card.size)
+	)
+
 	neon_beam = NeonTopBeam.new()
 	neon_beam.name = "NeonTopBeam"
 	neon_beam.active_color = active_color
-	neon_beam.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	neon_beam.visible = false
 	branding_card.add_child(neon_beam)
+
+	var margin_container = MarginContainer.new()
+	margin_container.name = "BrandingMargin"
+	margin_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin_container.add_theme_constant_override("margin_left", 16)
+	margin_container.add_theme_constant_override("margin_right", 18)
+	margin_container.add_theme_constant_override("margin_top", 11)
+	margin_container.add_theme_constant_override("margin_bottom", 11)
+	branding_card.add_child(margin_container)
 
 	var hbox = HBoxContainer.new()
 	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hbox.add_theme_constant_override("separation", 12)
-	branding_card.add_child(hbox)
+	margin_container.add_child(hbox)
 	
 	accent_pill = Panel.new()
 	accent_pill.name = "AccentPill"
 	accent_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	accent_pill.custom_minimum_size = Vector2(34, 34)
+	accent_pill.custom_minimum_size = Vector2(36, 36)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
-	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
-	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+	accent_pill_style.bg_color = Color(1.0, 1.0, 1.0, 0.05)
+	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.28)
 	accent_pill_style.set_border_width_all(1)
-	accent_pill_style.set_corner_radius_all(10)
-	accent_pill_style.shadow_size = 8
-	accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
+	accent_pill_style.set_corner_radius_all(12)
+	accent_pill_style.shadow_size = 4
+	accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.25)
+	accent_pill_style.shadow_offset = Vector2(0, 2)
 	accent_pill.add_theme_stylebox_override("panel", accent_pill_style)
 	hbox.add_child(accent_pill)
 
@@ -297,7 +314,7 @@ func _build_branding_card() -> void:
 	
 	var vbox = VBoxContainer.new()
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_theme_constant_override("separation", 3)
+	vbox.add_theme_constant_override("separation", 2)
 	hbox.add_child(vbox)
 	
 	var header_row = HBoxContainer.new()
@@ -310,12 +327,14 @@ func _build_branding_card() -> void:
 	channel_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	channel_label.text = channel_text
 	channel_label.add_theme_font_override("font", bold_font)
-	channel_label.add_theme_font_size_override("font_size", 13)
+	channel_label.add_theme_font_size_override("font_size", 14)
 	channel_label.add_theme_color_override("font_color", Color("#FFFFFF"))
 	header_row.add_child(channel_label)
 
 	tag_panel = PanelContainer.new()
+	tag_panel.name = "TagPanel"
 	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag_panel.visible = false
 	tag_style = StyleBoxFlat.new()
 	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
 	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.30)
@@ -328,8 +347,6 @@ func _build_branding_card() -> void:
 	tag_style.content_margin_top = 1
 	tag_style.content_margin_bottom = 1
 	tag_panel.add_theme_stylebox_override("panel", tag_style)
-	header_row.add_child(tag_panel)
-
 	tag_label = Label.new()
 	tag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_label.text = "PIANO"
@@ -340,6 +357,7 @@ func _build_branding_card() -> void:
 	divider_panel = NeonLaserDivider.new()
 	divider_panel.name = "NeonLaserDivider"
 	divider_panel.active_color = active_color
+	divider_panel.visible = false
 	divider_style = StyleBoxFlat.new()
 	divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
 	vbox.add_child(divider_panel)
@@ -349,7 +367,7 @@ func _build_branding_card() -> void:
 	song_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_label.text = song_text
 	song_label.visible = not song_text.is_empty()
-	song_label.add_theme_font_size_override("font_size", 14)
+	song_label.add_theme_font_size_override("font_size", 13)
 	song_label.add_theme_color_override("font_color", Color("#F8FAFC"))
 	vbox.add_child(song_label)
 	
@@ -358,7 +376,7 @@ func _build_branding_card() -> void:
 	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	subtitle_label.text = subtitle_text
 	subtitle_label.add_theme_font_size_override("font_size", 11)
-	subtitle_label.add_theme_color_override("font_color", Color("#A0ACB9"))
+	subtitle_label.add_theme_color_override("font_color", Color("#94A3B8"))
 	vbox.add_child(subtitle_label)
 
 func _build_live_sheet_hud() -> void:
@@ -631,22 +649,22 @@ func set_active_color(color: Color) -> void:
 		hud_panel.queue_redraw()
 
 func _apply_accent_colors() -> void:
+	if glass_mat != null:
+		glass_mat.set_shader_parameter("rim_color", Color(active_color.r, active_color.g, active_color.b, 0.40))
 	if neon_beam != null:
 		neon_beam.active_color = active_color
-		neon_beam.queue_redraw()
 	if wave_badge != null:
 		wave_badge.active_color = active_color
 		wave_badge.queue_redraw()
 	if divider_panel is NeonLaserDivider:
 		divider_panel.active_color = active_color
-		divider_panel.queue_redraw()
 	if branding_style != null:
 		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
 		branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
 	if accent_pill_style != null:
-		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
-		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
-		accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
+		accent_pill_style.bg_color = Color(1.0, 1.0, 1.0, 0.05)
+		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.28)
+		accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.25)
 	if badge_icon != null:
 		badge_icon.add_theme_color_override("font_color", active_color)
 	if tag_style != null:
