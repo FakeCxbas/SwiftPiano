@@ -30,6 +30,7 @@ var custom_bg_video_path: String = ""
 var library = MusicLibrary.new()
 var library_sheet = false
 var selected_song = "custom"
+var user_custom_title: String = ""
 var drafts: Dictionary = {}
 var active_color = Color("#64e8d0")
 var rainbow = false
@@ -262,6 +263,7 @@ func _build_ui() -> void:
 	menu.creator_shorts_toggled.connect(set_shorts_mode)
 	menu.creator_key_range_changed.connect(set_key_range_mode)
 	menu.creator_text_changed.connect(set_creator_texts)
+	menu.song_title_edited.connect(_on_song_title_edited)
 	menu.creator_kps_toggled.connect(set_kps_hud_enabled)
 	menu.creator_shake_toggled.connect(set_camera_shake_enabled)
 	menu.creator_rec_toggled.connect(toggle_audio_recording)
@@ -431,7 +433,10 @@ func _import_midi(path: String, show_dialog: bool = true) -> bool:
 		step_delays.clear()
 		for d in result.delays:
 			step_delays.append(float(d))
+	user_custom_title = ""
 	menu.song_title.text = path.get_file().get_basename()
+	if menu.song_field != null:
+		menu.song_field.text = menu.song_title.text
 	menu.song_title.tooltip_text = path
 	_sync_creator_song_title()
 	menu.show_section("sheet", false)
@@ -454,7 +459,10 @@ func _apply_conversion(text: String, title: String) -> void:
 	sheet_text_edit.text = text
 	compiled_text = ""
 	_compile_sheet()
+	user_custom_title = ""
 	menu.song_title.text = title
+	if menu.song_field != null:
+		menu.song_field.text = menu.song_title.text
 	menu.song_title.tooltip_text = "Hoja convertida desde MIDI"
 	_sync_creator_song_title()
 	menu.show_section("sheet", false)
@@ -752,8 +760,15 @@ func load_user_settings(path: String = settings_path) -> bool:
 	_loading_settings = false
 	return true
 
+func _on_song_title_edited(new_title: String) -> void:
+	user_custom_title = new_title.strip_edges()
+	_sync_creator_song_title()
+
 func _sync_creator_song_title() -> void:
 	if creator_overlay == null:
+		return
+	if not user_custom_title.is_empty():
+		creator_overlay.set_song_title(user_custom_title)
 		return
 	if steps.is_empty():
 		creator_overlay.set_song_title("Interpretación en Vivo")
@@ -784,7 +799,10 @@ func _menu_action(id: String) -> void:
 			_midi_dialog_target = "conversion" if id == "ChooseConversionMidi" else "import"
 			midi_dialog.popup_centered_ratio(0.8)
 		else:
-			export_dialog.current_file = "mi-hoja.txt"
+			var default_name = menu.song_title.text.strip_edges() if menu != null else ""
+			if default_name.is_empty() or default_name.ends_with("/  88 Teclas"):
+				default_name = "mi-hoja"
+			export_dialog.current_file = default_name.validate_filename() + ".txt"
 			export_dialog.popup_centered_ratio(0.8)
 		return
 	if id in ["library", "sheet", "appearance", "conversion"]:
@@ -825,7 +843,10 @@ func _load_song(index: int) -> void:
 		sheet_text_edit.text = song.sheet
 	compiled_text = ""
 	_compile_sheet()
+	user_custom_title = ""
 	menu.song_title.text = song.title
+	if menu.song_field != null:
+		menu.song_field.text = menu.song_title.text
 	menu.song_title.tooltip_text = str(song.title) + " · " + library.source_description(song)
 	_sync_creator_song_title()
 	menu.show_section("sheet")
@@ -859,8 +880,10 @@ func _set_appearance(color: Color, use_rainbow: bool, light_setting: Variant = "
 func _change_instrument(id: String) -> void:
 	if audio != null:
 		audio.set_instrument(id)
-		if selected_song == "custom" and menu != null:
+		if selected_song == "custom" and user_custom_title.is_empty() and menu != null:
 			menu.song_title.text = "%s  /  88 Teclas" % audio.get_current_instrument_name()
+			if menu.song_field != null:
+				menu.song_field.text = menu.song_title.text
 	save_user_settings()
 
 func _change_bar_style(style: String) -> void:
@@ -927,6 +950,7 @@ func _popup_action(action: String) -> void:
 			sheet_text_edit.text = Parser.normalize(DisplayServer.clipboard_get())
 			_compile_sheet()
 		"Clear":
+			user_custom_title = ""
 			auto_enabled = false
 			sheet_text_edit.text = ""
 			if drafts.has(selected_song):
@@ -935,6 +959,8 @@ func _popup_action(action: String) -> void:
 			library_sheet = false
 			if audio != null and menu != null:
 				menu.song_title.text = "%s  /  88 Teclas" % audio.get_current_instrument_name()
+				if menu.song_field != null:
+					menu.song_field.text = menu.song_title.text
 			_compile_sheet()
 		"Reset": _reset_auto()
 		"Exit": popup.hide()
@@ -1020,6 +1046,10 @@ func _input(event: InputEvent) -> void:
 				menu.channel_field.release_focus()
 			if menu.subtitle_field != null and not menu.subtitle_field.get_global_rect().has_point(event.position):
 				menu.subtitle_field.release_focus()
+			if menu.song_title != null and not menu.song_title.get_global_rect().has_point(event.position):
+				menu.song_title.release_focus()
+			if menu.song_field != null and not menu.song_field.get_global_rect().has_point(event.position):
+				menu.song_field.release_focus()
 	if not event is InputEventKey:
 		return
 	var code = Keymap.physical(event)
