@@ -161,16 +161,13 @@ func _build_branding_card() -> void:
 	branding_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	branding_style = StyleBoxFlat.new()
-	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.88)
+	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.85)
 	branding_style.set_corner_radius_all(14)
-	branding_style.border_width_left = 3
-	branding_style.border_width_top = 1
-	branding_style.border_width_right = 1
-	branding_style.border_width_bottom = 1
-	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.65)
-	branding_style.shadow_size = 18
-	branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
-	branding_style.shadow_offset = Vector2(0, 5)
+	branding_style.set_border_width_all(1)
+	branding_style.border_color = Color(1.0, 1.0, 1.0, 0.09)
+	branding_style.shadow_size = 20
+	branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.65)
+	branding_style.shadow_offset = Vector2(0, 6)
 	branding_style.content_margin_left = 14
 	branding_style.content_margin_right = 18
 	branding_style.content_margin_top = 10
@@ -186,15 +183,15 @@ func _build_branding_card() -> void:
 	accent_pill = Panel.new()
 	accent_pill.name = "AccentPill"
 	accent_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	accent_pill.custom_minimum_size = Vector2(32, 32)
+	accent_pill.custom_minimum_size = Vector2(30, 30)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
-	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
-	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
+	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
+	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	accent_pill_style.set_border_width_all(1)
-	accent_pill_style.set_corner_radius_all(16)
+	accent_pill_style.set_corner_radius_all(10)
 	accent_pill_style.shadow_size = 8
-	accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+	accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
 	accent_pill.add_theme_stylebox_override("panel", accent_pill_style)
 	hbox.add_child(accent_pill)
 
@@ -203,14 +200,14 @@ func _build_branding_card() -> void:
 	badge_icon.text = "♪"
 	badge_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	badge_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge_icon.size = Vector2(32, 32)
-	badge_icon.add_theme_font_size_override("font_size", 16)
+	badge_icon.size = Vector2(30, 30)
+	badge_icon.add_theme_font_size_override("font_size", 13)
 	badge_icon.add_theme_color_override("font_color", active_color)
 	accent_pill.add_child(badge_icon)
 	
 	var vbox = VBoxContainer.new()
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_theme_constant_override("separation", 4)
+	vbox.add_theme_constant_override("separation", 3)
 	hbox.add_child(vbox)
 	
 	var header_row = HBoxContainer.new()
@@ -223,17 +220,17 @@ func _build_branding_card() -> void:
 	channel_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	channel_label.text = channel_text
 	channel_label.add_theme_font_override("font", bold_font)
-	channel_label.add_theme_font_size_override("font_size", 15)
+	channel_label.add_theme_font_size_override("font_size", 14)
 	channel_label.add_theme_color_override("font_color", Color("#FFFFFF"))
 	header_row.add_child(channel_label)
 
 	tag_panel = PanelContainer.new()
 	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_style = StyleBoxFlat.new()
-	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.15)
-	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+	tag_style.bg_color = Color(1.0, 1.0, 1.0, 0.06)
+	tag_style.border_color = Color(1.0, 1.0, 1.0, 0.12)
 	tag_style.set_border_width_all(1)
-	tag_style.set_corner_radius_all(6)
+	tag_style.set_corner_radius_all(5)
 	tag_style.content_margin_left = 6
 	tag_style.content_margin_right = 6
 	tag_style.content_margin_top = 1
@@ -245,14 +242,14 @@ func _build_branding_card() -> void:
 	tag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_label.text = "PIANO"
 	tag_label.add_theme_font_size_override("font_size", 9)
-	tag_label.add_theme_color_override("font_color", active_color)
+	tag_label.add_theme_color_override("font_color", Color("#A0ACB9"))
 	tag_panel.add_child(tag_label)
 
 	divider_panel = Panel.new()
 	divider_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	divider_panel.custom_minimum_size = Vector2(0, 1)
 	divider_style = StyleBoxFlat.new()
-	divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+	divider_style.bg_color = Color(1.0, 1.0, 1.0, 0.07)
 	divider_panel.add_theme_stylebox_override("panel", divider_style)
 	vbox.add_child(divider_panel)
 	
@@ -260,7 +257,7 @@ func _build_branding_card() -> void:
 	song_label.name = "SongLabel"
 	song_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_label.text = song_text
-	song_label.add_theme_font_size_override("font_size", 14)
+	song_label.add_theme_font_size_override("font_size", 13)
 	song_label.add_theme_color_override("font_color", Color("#EDF2FA"))
 	vbox.add_child(song_label)
 	
@@ -269,8 +266,7 @@ func _build_branding_card() -> void:
 	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	subtitle_label.text = subtitle_text
 	subtitle_label.add_theme_font_size_override("font_size", 11)
-	var light_accent = active_color.lightened(0.32)
-	subtitle_label.add_theme_color_override("font_color", Color(light_accent.r, light_accent.g, light_accent.b, 0.90))
+	subtitle_label.add_theme_color_override("font_color", Color("#8D9BAE"))
 	vbox.add_child(subtitle_label)
 
 func _build_live_sheet_hud() -> void:
@@ -544,23 +540,22 @@ func set_active_color(color: Color) -> void:
 
 func _apply_accent_colors() -> void:
 	if branding_style != null:
-		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.65)
+		branding_style.border_color = Color(1.0, 1.0, 1.0, 0.09)
 	if accent_pill_style != null:
-		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
-		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
-		accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.16)
+		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+		accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
 	if badge_icon != null:
 		badge_icon.add_theme_color_override("font_color", active_color)
 	if tag_style != null:
-		tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.15)
-		tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+		tag_style.bg_color = Color(1.0, 1.0, 1.0, 0.06)
+		tag_style.border_color = Color(1.0, 1.0, 1.0, 0.12)
 	if tag_label != null:
-		tag_label.add_theme_color_override("font_color", active_color)
+		tag_label.add_theme_color_override("font_color", Color("#A0ACB9"))
 	if divider_style != null:
-		divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+		divider_style.bg_color = Color(1.0, 1.0, 1.0, 0.07)
 	if subtitle_label != null:
-		var light_accent = active_color.lightened(0.32)
-		subtitle_label.add_theme_color_override("font_color", Color(light_accent.r, light_accent.g, light_accent.b, 0.90))
+		subtitle_label.add_theme_color_override("font_color", Color("#8D9BAE"))
 	if hud_style != null:
 		hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	if current_step_style != null:

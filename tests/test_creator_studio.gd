@@ -52,6 +52,9 @@ func _run() -> void:
 	check(co.divider_panel != null, "BrandingCard features translucent dividing hairline")
 	check(co.channel_label.text == "@DragonCxbas", "Default channel label is @DragonCxbas")
 	check(co.subtitle_label.text == "Virtual Piano Sheet in Description", "Default subtitle CTA is set")
+	check(not co.branding_style.border_color.is_equal_approx(co.active_color), "BrandingCard border is neutral glass rim, not colored contour")
+	check(is_equal_approx(co.branding_style.border_color.r, 1.0) and is_equal_approx(co.branding_style.border_color.g, 1.0) and is_equal_approx(co.branding_style.border_color.b, 1.0), "BrandingCard border rim is neutral white tint")
+	check(is_equal_approx(co.divider_style.bg_color.r, 1.0), "Divider hairline is neutral translucent")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, app.menu.menu_height + 16.0), "BrandingCard sits below top menu when zen_mode is false")
 	
 	# Toggle Zen mode via '|' key
