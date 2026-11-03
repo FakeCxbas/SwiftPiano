@@ -31,6 +31,7 @@ func _init() -> void:
 	songs.append({"id": "howls-moving-castle-v1", "title": "Howl's Moving Castle (Merry-Go-Round of Life) - Versión 1", "page": 0, "end_page": 0, "source": "Joe Hisaishi / Vals en 3/4", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_v1.txt", "letras-005")})
 	songs.append({"id": "howls-moving-castle-liszt", "title": "Howl's Moving Castle (Liszt Concert Paraphrase) - Hisaishi", "page": 0, "end_page": 0, "source": "Paráfrasis de Concierto a lo Franz Liszt", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_liszt.txt", "howls-moving-castle-v1")})
 	songs.append({"id": "howls-moving-castle-god-maniac", "title": "Howl's Moving Castle (Parte God Maníaca) - Joe Hisaishi", "page": 0, "end_page": 0, "source": "Tango / Vals Maníaco con Octavas", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_parte_god_maniaca.txt", "letras-040")})
+	songs.append({"id": "kamyus-waltz", "title": "Kamyu's Waltz - Dragon Quest XI (Erik's Theme)", "page": 0, "end_page": 0, "source": "Dragon Quest XI / Sugiyama", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/kamyus_waltz.txt")})
 
 
 static func source_description(song: Dictionary) -> String:

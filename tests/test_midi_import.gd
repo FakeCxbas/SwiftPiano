@@ -96,6 +96,13 @@ func run() -> void:
 	check(vel_parsed.size() == 1 and vel_parsed[0].has("velocities"), "Velocities dictionary extracted")
 	check(vel_parsed[0].velocities.get(60) == 45 and vel_parsed[0].velocities.get(64) == 115, "Note dynamics preserved accurately")
 
+	# Test chord clustering for unquantized notes within human tolerance
+	var cluster_track = [0, 0x90, 60, 80, 5, 0x90, 64, 85, 5, 0x90, 67, 90, 0, 0xff, 0x2f, 0]
+	var cluster_res = Importer.new().parse_bytes(midi([cluster_track], 0, 480))
+	var cluster_steps = Parser.parse(cluster_res.sheet)
+	check(cluster_steps.size() == 1, "Near-simultaneous human note onsets clustered into a single chord step")
+	check(cluster_steps[0].notes == [60, 64, 67], "Clustered chord preserves all note pitches")
+
 	# Test arrow up and down transposition
 	var prev_transp = app.transposition
 	var up_event = InputEventKey.new()
