@@ -987,8 +987,8 @@ func _build_appearance() -> void:
 	fields_grid.add_child(song_lbl)
 	
 	song_field = LineEdit.new()
-	song_field.text = song_title.text if song_title != null else "Interpretación en Vivo"
-	song_field.placeholder_text = "Escribe el título de la canción u hoja..."
+	song_field.text = song_title.text if (song_title != null and not song_title.text.ends_with("/  88 Teclas") and song_title.text != "Interpretación en Vivo") else ""
+	song_field.placeholder_text = "Escribe el título (dejar en blanco para ocultar)..."
 	song_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	song_field.custom_minimum_size = Vector2(260, 36)
 	song_field.add_theme_stylebox_override("normal", StudioSkin.surface(Color("#11151c"), Color("#363e49")))

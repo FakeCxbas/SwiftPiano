@@ -71,10 +71,37 @@ class NeonTopBeam extends Control:
 		var x2 = w - 14.0
 		if x2 <= x1:
 			return
-		var glow_c = Color(active_color.r, active_color.g, active_color.b, 0.28)
-		draw_line(Vector2(x1 + 6.0, 1.0), Vector2(x2 - 6.0, 1.0), glow_c, 3.2)
-		var core_c = Color(active_color.r, active_color.g, active_color.b, 0.85)
-		draw_line(Vector2(x1, 1.0), Vector2(x2, 1.0), core_c, 1.2)
+		# 1. Wide diffused glow aura
+		draw_line(Vector2(x1 + 4.0, 1.0), Vector2(x2 - 4.0, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.35), 8.0)
+		# 2. Mid laser bloom
+		draw_line(Vector2(x1 + 2.0, 1.0), Vector2(x2 - 2.0, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.70), 4.0)
+		# 3. Vivid saturated beam
+		draw_line(Vector2(x1, 1.0), Vector2(x2, 1.0), Color(active_color.r, active_color.g, active_color.b, 1.0), 1.8)
+		# 4. Hot specular center
+		draw_line(Vector2(x1 + 8.0, 1.0), Vector2(x2 - 8.0, 1.0), Color(1.0, 1.0, 1.0, 0.92), 1.0)
+
+class NeonLaserDivider extends Control:
+	var active_color: Color = Color("#64e8d0")
+	
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 10)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	func _draw() -> void:
+		var w = size.x
+		if w < 10.0:
+			return
+		var mid_y = size.y * 0.5
+		# 1. Broad atmospheric neon diffusion
+		draw_line(Vector2(0, mid_y), Vector2(w, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.20), 10.0)
+		# 2. Outer luminous halo
+		draw_line(Vector2(2, mid_y), Vector2(w - 2, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.45), 5.5)
+		# 3. Vivid neon beam core
+		draw_line(Vector2(4, mid_y), Vector2(w - 4, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.88), 2.6)
+		# 4. Super-saturated core filament
+		draw_line(Vector2(6, mid_y), Vector2(w - 6, mid_y), Color(active_color.r, active_color.g, active_color.b, 1.0), 1.4)
+		# 5. Hot white laser center
+		draw_line(Vector2(w * 0.08, mid_y), Vector2(w * 0.92, mid_y), Color(1.0, 1.0, 1.0, 0.92), 0.8)
 
 var active_color: Color = Color("#64e8d0")
 var zen_mode: bool = false
@@ -84,7 +111,7 @@ var menu_height: float = 112.0
 var branding_enabled: bool = true
 var branding_position: String = "top_left" # "top_left", "top_right", "bottom_above_keys"
 var channel_text: String = "@DragonCxbas"
-var song_text: String = "Interpretación en Vivo"
+var song_text: String = ""
 var subtitle_text: String = "Virtual Piano Sheet in Description"
 
 var branding_card: PanelContainer
@@ -97,7 +124,7 @@ var badge_icon: Label
 var tag_panel: PanelContainer
 var tag_style: StyleBoxFlat
 var tag_label: Label
-var divider_panel: Panel
+var divider_panel: Control
 var divider_style: StyleBoxFlat
 var channel_label: Label
 var song_label: Label
@@ -230,17 +257,17 @@ func _build_branding_card() -> void:
 	branding_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	branding_style = StyleBoxFlat.new()
-	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.88)
+	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.92)
 	branding_style.set_corner_radius_all(14)
 	branding_style.set_border_width_all(1)
-	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.32)
-	branding_style.shadow_size = 22
-	branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.28)
-	branding_style.shadow_offset = Vector2(0, 4)
-	branding_style.content_margin_left = 14
+	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.70)
+	branding_style.shadow_size = 32
+	branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+	branding_style.shadow_offset = Vector2(0, 2)
+	branding_style.content_margin_left = 16
 	branding_style.content_margin_right = 18
-	branding_style.content_margin_top = 10
-	branding_style.content_margin_bottom = 10
+	branding_style.content_margin_top = 11
+	branding_style.content_margin_bottom = 11
 	branding_card.add_theme_stylebox_override("panel", branding_style)
 	add_child(branding_card)
 	
@@ -261,12 +288,12 @@ func _build_branding_card() -> void:
 	accent_pill.custom_minimum_size = Vector2(34, 34)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
-	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
-	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
+	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
 	accent_pill_style.set_border_width_all(1)
 	accent_pill_style.set_corner_radius_all(10)
-	accent_pill_style.shadow_size = 12
-	accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.38)
+	accent_pill_style.shadow_size = 16
+	accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
 	accent_pill.add_theme_stylebox_override("panel", accent_pill_style)
 	hbox.add_child(accent_pill)
 
@@ -283,7 +310,7 @@ func _build_branding_card() -> void:
 	
 	var vbox = VBoxContainer.new()
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_theme_constant_override("separation", 2)
+	vbox.add_theme_constant_override("separation", 3)
 	hbox.add_child(vbox)
 	
 	var header_row = HBoxContainer.new()
@@ -303,10 +330,12 @@ func _build_branding_card() -> void:
 	tag_panel = PanelContainer.new()
 	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_style = StyleBoxFlat.new()
-	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.14)
-	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
 	tag_style.set_border_width_all(1)
 	tag_style.set_corner_radius_all(4)
+	tag_style.shadow_size = 8
+	tag_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	tag_style.content_margin_left = 6
 	tag_style.content_margin_right = 6
 	tag_style.content_margin_top = 1
@@ -318,21 +347,21 @@ func _build_branding_card() -> void:
 	tag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_label.text = "PIANO"
 	tag_label.add_theme_font_size_override("font_size", 9)
-	tag_label.add_theme_color_override("font_color", active_color.lightened(0.25))
+	tag_label.add_theme_color_override("font_color", active_color.lightened(0.40))
 	tag_panel.add_child(tag_label)
 
-	divider_panel = Panel.new()
-	divider_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	divider_panel.custom_minimum_size = Vector2(0, 1)
+	divider_panel = NeonLaserDivider.new()
+	divider_panel.name = "NeonLaserDivider"
+	divider_panel.active_color = active_color
 	divider_style = StyleBoxFlat.new()
-	divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
-	divider_panel.add_theme_stylebox_override("panel", divider_style)
+	divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
 	vbox.add_child(divider_panel)
 	
 	song_label = Label.new()
 	song_label.name = "SongLabel"
 	song_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_label.text = song_text
+	song_label.visible = not song_text.is_empty()
 	song_label.add_theme_font_size_override("font_size", 14)
 	song_label.add_theme_color_override("font_color", Color("#F8FAFC"))
 	vbox.add_child(song_label)
@@ -342,7 +371,7 @@ func _build_branding_card() -> void:
 	subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	subtitle_label.text = subtitle_text
 	subtitle_label.add_theme_font_size_override("font_size", 11)
-	subtitle_label.add_theme_color_override("font_color", Color("#94A3B8"))
+	subtitle_label.add_theme_color_override("font_color", Color("#A0ACB9"))
 	vbox.add_child(subtitle_label)
 
 func _build_live_sheet_hud() -> void:
@@ -621,24 +650,28 @@ func _apply_accent_colors() -> void:
 	if wave_badge != null:
 		wave_badge.active_color = active_color
 		wave_badge.queue_redraw()
+	if divider_panel is NeonLaserDivider:
+		divider_panel.active_color = active_color
+		divider_panel.queue_redraw()
 	if branding_style != null:
-		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.32)
-		branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.28)
+		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.70)
+		branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
 	if accent_pill_style != null:
-		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
-		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
-		accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.38)
+		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
+		accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
 	if badge_icon != null:
 		badge_icon.add_theme_color_override("font_color", active_color)
 	if tag_style != null:
-		tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.14)
-		tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+		tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
+		tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
+		tag_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	if tag_label != null:
-		tag_label.add_theme_color_override("font_color", active_color.lightened(0.25))
+		tag_label.add_theme_color_override("font_color", active_color.lightened(0.40))
 	if divider_style != null:
-		divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.18)
+		divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
 	if subtitle_label != null:
-		subtitle_label.add_theme_color_override("font_color", Color("#94A3B8"))
+		subtitle_label.add_theme_color_override("font_color", Color("#A0ACB9"))
 	if hud_style != null:
 		hud_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 	if current_step_style != null:
@@ -709,12 +742,12 @@ func set_channel_text(value: String) -> void:
 
 func set_song_title(value: String) -> void:
 	var cleaned = value.strip_edges()
-	if cleaned.is_empty() or cleaned.ends_with("/  88 Teclas"):
-		song_text = "Interpretación en Vivo"
-	else:
-		song_text = cleaned
+	if cleaned.ends_with("/  88 Teclas") or cleaned == "Interpretación en Vivo":
+		cleaned = ""
+	song_text = cleaned
 	if song_label != null:
 		song_label.text = song_text
+		song_label.visible = not song_text.is_empty()
 	arrange(_effective_size(), menu_height, false)
 
 func set_subtitle_text(value: String) -> void:
