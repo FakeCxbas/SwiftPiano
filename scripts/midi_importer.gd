@@ -65,7 +65,7 @@ func parse_bytes(bytes: PackedByteArray, title: String = "MIDI") -> Dictionary:
 		return {"error": "Se admiten MIDI tipo 0 y 1, con hasta 256 pistas."}
 	if division == 0 or division & 0x8000:
 		return {"error": "Se requiere división musical PPQN; SMPTE no está disponible."}
-	var onsets: Dictionary = {}
+	var raw_notes: Array = []
 	var omitted = 0
 	var percussion = 0
 	var events = 0
@@ -124,24 +124,36 @@ func parse_bytes(bytes: PackedByteArray, title: String = "MIDI") -> Dictionary:
 					elif note < 21 or note > 108:
 						omitted += 1
 					else:
-						if not onsets.has(tick):
-							if onsets.size() >= MAX_STEPS:
-								return {"error": "La hoja supera los 10.000 pasos. Divide el MIDI en fragmentos."}
-							onsets[tick] = {}
-						if not onsets[tick].has(note) or value > onsets[tick][note]:
-							onsets[tick][note] = value
+						raw_notes.append([tick, note, value])
 			else:
 				error = "Evento MIDI no admitido."
 		if not error.is_empty():
 			return {"error": error}
 		if not ended:
 			return {"error": "Falta el evento de fin de pista."}
-	if onsets.is_empty():
+	if raw_notes.is_empty():
 		return {"error": "No hay notas melódicas en el rango A0–C8."}
+
+	raw_notes.sort_custom(func(a, b): return a[0] < b[0])
+	var sec_per_tick = (float(us_per_qn) / 1000000.0) / float(maxi(1, division))
+	var chord_tolerance_ticks = clampi(int(0.038 / maxf(0.00001, sec_per_tick)), 0, int(division * 0.125))
+
+	var onsets: Dictionary = {}
+	var cluster_tick = -1
+	for ev in raw_notes:
+		var n_tick: int = ev[0]
+		var n_note: int = ev[1]
+		var n_vel: int = ev[2]
+		if cluster_tick < 0 or (n_tick - cluster_tick) > chord_tolerance_ticks:
+			cluster_tick = n_tick
+			if onsets.size() >= MAX_STEPS:
+				return {"error": "La hoja supera los 10.000 pasos. Divide el MIDI en fragmentos."}
+			onsets[cluster_tick] = {}
+		if not onsets[cluster_tick].has(n_note) or n_vel > onsets[cluster_tick][n_note]:
+			onsets[cluster_tick][n_note] = n_vel
 	var ticks = onsets.keys()
 	ticks.sort()
 	var delays: Array[float] = []
-	var sec_per_tick = (float(us_per_qn) / 1000000.0) / float(maxi(1, division))
 	var lines = PackedStringArray()
 	lines.append("# MIDI: " + title.replace("\n", " ").replace("\r", " "))
 	lines.append("# Auto: un paso por ataque; tú controlas el ritmo y la duración.")
