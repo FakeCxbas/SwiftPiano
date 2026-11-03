@@ -710,6 +710,8 @@ func save_user_settings(path: String = settings_path) -> void:
 	if audio != null:
 		cfg.set_value("audio", "instrument", audio.get_current_instrument_id())
 		cfg.set_value("audio", "reverb_preset", audio.current_reverb_preset)
+		if volume_slider != null:
+			cfg.set_value("audio", "volume", volume_slider.value)
 	if creator_overlay != null:
 		cfg.set_value("creator", "branding_enabled", creator_overlay.branding_enabled)
 		cfg.set_value("creator", "branding_position", creator_overlay.branding_position)
@@ -745,11 +747,15 @@ func load_user_settings(path: String = settings_path) -> bool:
 	if audio != null:
 		var saved_inst = str(cfg.get_value("audio", "instrument", audio.get_current_instrument_id()))
 		var saved_rev = str(cfg.get_value("audio", "reverb_preset", audio.current_reverb_preset))
+		var saved_vol = float(cfg.get_value("audio", "volume", 100.0))
 		if menu != null:
 			menu.set_active_instrument(saved_inst)
 			menu.set_active_reverb_preset(saved_rev)
+			if volume_slider != null:
+				volume_slider.set_value_no_signal(saved_vol)
 		_change_instrument(saved_inst)
 		_change_reverb_preset(saved_rev)
+		_set_volume(saved_vol)
 	if creator_overlay != null:
 		var b_en = bool(cfg.get_value("creator", "branding_enabled", creator_overlay.branding_enabled))
 		var b_pos = str(cfg.get_value("creator", "branding_position", creator_overlay.branding_position))
@@ -920,9 +926,13 @@ func _change_reverb_preset(preset: String) -> void:
 	save_user_settings()
 
 func _set_volume(value: float) -> void:
-	volume_label.text = "%d%%" % int(value)
+	if volume_label != null:
+		volume_label.text = "%d%%" % int(value)
+	if volume_slider != null and not is_equal_approx(volume_slider.value, value):
+		volume_slider.set_value_no_signal(value)
 	if audio != null:
 		audio.set_volume(int(clampf(value, 0, 100) * 2))
+	save_user_settings()
 
 func _refresh_progress() -> void:
 	var t_info = "  (Transp: %+d)" % transposition if transposition != 0 else ""
