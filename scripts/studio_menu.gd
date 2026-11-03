@@ -18,6 +18,7 @@ signal creator_hud_changed(enabled: bool, pos: String)
 signal creator_shorts_toggled(enabled: bool)
 signal creator_key_range_changed(mode: String)
 signal creator_text_changed(channel: String, subtitle: String)
+signal song_title_edited(new_title: String)
 signal creator_kps_toggled(enabled: bool)
 signal creator_shake_toggled(enabled: bool)
 signal creator_rec_toggled()
@@ -178,7 +179,8 @@ var color_picker: ColorPickerButton
 var rainbow_toggle: CheckButton
 var rhythm_flash_toggle: CheckButton
 var header: Label
-var song_title: Label
+var song_title: LineEdit
+var song_field: LineEdit
 var section_title: Label
 var section_hint: Label
 var close_button: Button
@@ -230,7 +232,27 @@ func build(song_library) -> void:
 	song_chip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	song_chip_panel.add_theme_stylebox_override("panel", StudioSkin.chip(Color(0.06, 0.12, 0.18, 0.65), Color(0.25, 0.45, 0.55, 0.4), 12))
 	add_child(song_chip_panel)
-	song_title = label("Grand Studio  /  88 Teclas", 11, Color("#99c6d8"))
+	
+	song_title = LineEdit.new()
+	song_title.text = "Grand Studio  /  88 Teclas"
+	song_title.placeholder_text = "Escribe el título de la canción u hoja..."
+	song_title.tooltip_text = "Haz clic para editar o poner el nombre de la hoja"
+	song_title.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	song_title.select_all_on_focus = true
+	song_title.context_menu_enabled = true
+	song_title.add_theme_font_size_override("font_size", 12)
+	song_title.add_theme_color_override("font_color", Color("#99c6d8"))
+	song_title.add_theme_color_override("font_placeholder_color", Color("#557280"))
+	_update_song_title_styles()
+	song_title.text_changed.connect(func(new_text: String):
+		if song_field != null and song_field.text != new_text:
+			song_field.text = new_text
+		song_title_edited.emit(new_text))
+	song_title.text_submitted.connect(func(new_text: String):
+		song_title.release_focus()
+		if song_field != null and song_field.text != new_text:
+			song_field.text = new_text
+		song_title_edited.emit(new_text))
 	add_child(song_title)
 	
 	segmented_panel = Panel.new()
@@ -950,6 +972,28 @@ func _build_appearance() -> void:
 	fields_grid.add_theme_constant_override("v_separation", 8)
 	box.add_child(fields_grid)
 	
+	var song_lbl = label("Canción / Hoja:", 13, Color("#9cb6c7"))
+	song_lbl.custom_minimum_size = Vector2(140, 34)
+	fields_grid.add_child(song_lbl)
+	
+	song_field = LineEdit.new()
+	song_field.text = song_title.text if song_title != null else "Interpretación en Vivo"
+	song_field.placeholder_text = "Escribe el título de la canción u hoja..."
+	song_field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	song_field.custom_minimum_size = Vector2(260, 36)
+	song_field.add_theme_stylebox_override("normal", StudioSkin.surface(Color("#11151c"), Color("#363e49")))
+	song_field.add_theme_stylebox_override("focus", StudioSkin.surface(Color("#11151c"), chosen_color))
+	song_field.text_changed.connect(func(new_text: String):
+		if song_title != null and song_title.text != new_text:
+			song_title.text = new_text
+		song_title_edited.emit(new_text))
+	song_field.text_submitted.connect(func(new_text: String):
+		song_field.release_focus()
+		if song_title != null and song_title.text != new_text:
+			song_title.text = new_text
+		song_title_edited.emit(new_text))
+	fields_grid.add_child(song_field)
+	
 	var ch_lbl = label("Canal / Handle:", 13, Color("#9cb6c7"))
 	ch_lbl.custom_minimum_size = Vector2(140, 34)
 	fields_grid.add_child(ch_lbl)
@@ -1082,6 +1126,10 @@ func release_creator_focus() -> void:
 		channel_field.release_focus()
 	if subtitle_field != null:
 		subtitle_field.release_focus()
+	if song_field != null:
+		song_field.release_focus()
+	if song_title != null:
+		song_title.release_focus()
 
 func set_active_instrument(id: String) -> void:
 	current_instrument = id
@@ -1136,6 +1184,9 @@ func _sync_accent_widgets() -> void:
 		channel_field.add_theme_stylebox_override("focus", StudioSkin.surface(Color("#11151c"), chosen_color))
 	if subtitle_field != null:
 		subtitle_field.add_theme_stylebox_override("focus", StudioSkin.surface(Color("#11151c"), chosen_color))
+	if song_field != null:
+		song_field.add_theme_stylebox_override("focus", StudioSkin.surface(Color("#11151c"), chosen_color))
+	_update_song_title_styles()
 	for key in instrument_buttons:
 		StudioSkin.instrument_button(instrument_buttons[key], key == current_instrument, chosen_color)
 	for key in reverb_buttons:
@@ -1146,6 +1197,29 @@ func _sync_accent_widgets() -> void:
 		StudioSkin.instrument_button(light_mode_buttons[key], key == current_light_mode, chosen_color)
 	_refresh_creator_styles()
 
+func _update_song_title_styles() -> void:
+	if song_title == null:
+		return
+	var style_normal = StudioSkin.chip(Color(0.06, 0.12, 0.18, 0.65), Color(0.25, 0.45, 0.55, 0.4), 12)
+	style_normal.content_margin_left = 12
+	style_normal.content_margin_right = 12
+	style_normal.content_margin_top = 2
+	style_normal.content_margin_bottom = 2
+	var style_hover = StudioSkin.chip(Color(0.08, 0.15, 0.22, 0.8), Color(0.35, 0.55, 0.65, 0.6), 12)
+	style_hover.content_margin_left = 12
+	style_hover.content_margin_right = 12
+	style_hover.content_margin_top = 2
+	style_hover.content_margin_bottom = 2
+	var style_focus = StudioSkin.chip(Color(0.09, 0.18, 0.26, 0.95), chosen_color, 12)
+	style_focus.content_margin_left = 12
+	style_focus.content_margin_right = 12
+	style_focus.content_margin_top = 2
+	style_focus.content_margin_bottom = 2
+	song_title.add_theme_stylebox_override("normal", style_normal)
+	song_title.add_theme_stylebox_override("hover", style_hover)
+	song_title.add_theme_stylebox_override("focus", style_focus)
+	song_title.add_theme_color_override("caret_color", chosen_color)
+
 func _emit_appearance() -> void:
 	chosen_color = color_picker.color
 	_sync_accent_widgets()
@@ -1154,7 +1228,7 @@ func _emit_appearance() -> void:
 	appearance_changed.emit(chosen_color, rainbow_toggle.button_pressed, current_light_mode)
 
 func editing_input() -> bool:
-	var creator_focused = (channel_field != null and channel_field.has_focus()) or (subtitle_field != null and subtitle_field.has_focus())
+	var creator_focused = (channel_field != null and channel_field.has_focus()) or (subtitle_field != null and subtitle_field.has_focus()) or (song_field != null and song_field.has_focus()) or (song_title != null and song_title.has_focus())
 	return (drawer.visible and section == "conversion") or search_field.has_focus() or song_list.has_focus() or color_picker.get_popup().visible or creator_focused
 
 func show_section(id: String, toggle: bool = true) -> void:
@@ -1183,13 +1257,11 @@ func arrange(view_size: Vector2, keyboard_top: float) -> void:
 	header.position = Vector2(left + 45, 18)
 	header.size = Vector2(100 if narrow else 140, 22)
 	header.add_theme_font_size_override("font_size", 13 if narrow else 15)
-	song_chip_panel.visible = view_size.x >= 700
-	song_chip_panel.position = Vector2(left + 182, 16)
-	song_chip_panel.size = Vector2(clampf(width - 394, 0, 420), 28)
+	song_chip_panel.visible = false
 	song_title.visible = view_size.x >= 700
-	song_title.position = Vector2(left + 190, 18)
-	song_title.size = Vector2(clampf(width - 410, 0, 400), 24)
-	song_title.add_theme_font_size_override("font_size", 13)
+	song_title.position = Vector2(left + 182, 16)
+	song_title.size = Vector2(clampf(width - 394, 0, 420), 28)
+	song_title.add_theme_font_size_override("font_size", 12)
 	var right = left + width - 16
 	volume_label.position = Vector2(right - 42, 20)
 	volume_label.size = Vector2(42, 22)

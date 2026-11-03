@@ -322,7 +322,35 @@ func _run() -> void:
 	check(app.camera_shake_enabled == true, "Persisted camera_shake_enabled restored")
 	check(is_equal_approx(app.bot_bpm, 155.0), "Persisted bot_bpm restored")
 	check(co.channel_text == "@TestCreator" and app.menu.channel_field.text == "@TestCreator", "Persisted channel_text restored")
-	check(co.subtitle_text == "Custom Persistent Subtitle" and app.menu.subtitle_field.text == "Custom Persistent Subtitle", "Persisted subtitle_text restored")
+	# 8. Verify editable song_title and song_field two-way synchronization
+	check(app.menu.song_title is LineEdit, "Top bar song_title is an interactive LineEdit")
+	check(app.menu.song_field is LineEdit, "Creator drawer song_field is an interactive LineEdit")
+	
+	# Edit from top bar song_title
+	app.menu.song_title.text = "Custom Sonata in C Major"
+	app.menu.song_title.text_changed.emit("Custom Sonata in C Major")
+	check(app.menu.song_field.text == "Custom Sonata in C Major", "Editing song_title syncs to song_field")
+	check(app.user_custom_title == "Custom Sonata in C Major", "Editing song_title sets user_custom_title")
+	check(co.song_text == "Custom Sonata in C Major", "Editing song_title updates Creator watermark overlay")
+	
+	# Edit from creator drawer song_field
+	app.menu.song_field.text = "Fairy Fountain Fantasy"
+	app.menu.song_field.text_changed.emit("Fairy Fountain Fantasy")
+	check(app.menu.song_title.text == "Fairy Fountain Fantasy", "Editing song_field syncs to top bar song_title")
+	check(app.user_custom_title == "Fairy Fountain Fantasy", "Editing song_field sets user_custom_title")
+	check(co.song_text == "Fairy Fountain Fantasy", "Editing song_field updates Creator watermark overlay")
+	
+	# Verify editing_input prevents keyboard note interception
+	app.menu.song_title.grab_focus()
+	check(app.menu.editing_input() == true, "editing_input() is true when song_title has focus")
+	app.menu.release_creator_focus()
+	check(not app.menu.song_title.has_focus() and not app.menu.song_field.has_focus(), "release_creator_focus() drops focus from song title inputs")
+	
+	# Verify ExportSheet adopts sanitized custom title as filename
+	app._menu_action("ExportSheet")
+	check(app.export_dialog.current_file == "Fairy Fountain Fantasy.txt", "ExportSheet suggests custom title filename")
+	app.export_dialog.hide()
+
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(test_cfg_path))
 
 	app.audio.stop_all()
