@@ -48,14 +48,12 @@ class LiveWaveBadge extends Control:
 		var spacing = 2.4
 		var total_w = 4.0 * bar_w + 3.0 * spacing
 		var start_x = (w - total_w) * 0.5
-		var glow_c = Color(active_color.r, active_color.g, active_color.b, 0.32)
-		var core_c = Color(active_color.r, active_color.g, active_color.b, 0.95)
+		var c = Color(active_color.r, active_color.g, active_color.b, 0.90)
 		for i in range(4):
 			var bh = clampf(bar_heights[i], 3.0, h - 8.0)
 			var bx = start_x + float(i) * (bar_w + spacing)
 			var by = (h - bh) * 0.5
-			draw_rect(Rect2(bx - 0.7, by - 0.7, bar_w + 1.4, bh + 1.4), glow_c, true)
-			draw_rect(Rect2(bx, by, bar_w, bh), core_c, true)
+			draw_rect(Rect2(bx, by, bar_w, bh), c, true)
 
 class NeonTopBeam extends Control:
 	var active_color: Color = Color("#64e8d0")
@@ -67,24 +65,21 @@ class NeonTopBeam extends Control:
 		var w = size.x
 		if w < 24.0:
 			return
-		var x1 = 14.0
-		var x2 = w - 14.0
+		var x1 = 16.0
+		var x2 = w - 16.0
 		if x2 <= x1:
 			return
-		# 1. Wide diffused glow aura
-		draw_line(Vector2(x1 + 4.0, 1.0), Vector2(x2 - 4.0, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.35), 8.0)
-		# 2. Mid laser bloom
-		draw_line(Vector2(x1 + 2.0, 1.0), Vector2(x2 - 2.0, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.70), 4.0)
-		# 3. Vivid saturated beam
-		draw_line(Vector2(x1, 1.0), Vector2(x2, 1.0), Color(active_color.r, active_color.g, active_color.b, 1.0), 1.8)
-		# 4. Hot specular center
-		draw_line(Vector2(x1 + 8.0, 1.0), Vector2(x2 - 8.0, 1.0), Color(1.0, 1.0, 1.0, 0.92), 1.0)
+		# Liquid Glass top specular reflection: delicate light sheen
+		draw_line(Vector2(x1, 1.0), Vector2(x2, 1.0), Color(1.0, 1.0, 1.0, 0.16), 1.0)
+		# Subtle crimson refraction hint
+		var seg = (x2 - x1) * 0.45
+		draw_line(Vector2(x1 + 6.0, 1.0), Vector2(x1 + 6.0 + seg, 1.0), Color(active_color.r, active_color.g, active_color.b, 0.20), 1.0)
 
 class NeonLaserDivider extends Control:
 	var active_color: Color = Color("#64e8d0")
 	
 	func _init() -> void:
-		custom_minimum_size = Vector2(0, 10)
+		custom_minimum_size = Vector2(0, 6)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	func _draw() -> void:
@@ -92,16 +87,8 @@ class NeonLaserDivider extends Control:
 		if w < 10.0:
 			return
 		var mid_y = size.y * 0.5
-		# 1. Broad atmospheric neon diffusion
-		draw_line(Vector2(0, mid_y), Vector2(w, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.20), 10.0)
-		# 2. Outer luminous halo
-		draw_line(Vector2(2, mid_y), Vector2(w - 2, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.45), 5.5)
-		# 3. Vivid neon beam core
-		draw_line(Vector2(4, mid_y), Vector2(w - 4, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.88), 2.6)
-		# 4. Super-saturated core filament
-		draw_line(Vector2(6, mid_y), Vector2(w - 6, mid_y), Color(active_color.r, active_color.g, active_color.b, 1.0), 1.4)
-		# 5. Hot white laser center
-		draw_line(Vector2(w * 0.08, mid_y), Vector2(w * 0.92, mid_y), Color(1.0, 1.0, 1.0, 0.92), 0.8)
+		# Liquid Glass whisper hairline with subtle crimson tint
+		draw_line(Vector2(0, mid_y), Vector2(w, mid_y), Color(active_color.r, active_color.g, active_color.b, 0.20), 1.0)
 
 var active_color: Color = Color("#64e8d0")
 var zen_mode: bool = false
@@ -257,13 +244,13 @@ func _build_branding_card() -> void:
 	branding_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	branding_style = StyleBoxFlat.new()
-	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.92)
-	branding_style.set_corner_radius_all(14)
+	branding_style.bg_color = Color(0.04, 0.05, 0.08, 0.82)
+	branding_style.set_corner_radius_all(16)
 	branding_style.set_border_width_all(1)
-	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.70)
-	branding_style.shadow_size = 32
-	branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
-	branding_style.shadow_offset = Vector2(0, 2)
+	branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
+	branding_style.shadow_size = 20
+	branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	branding_style.shadow_offset = Vector2(0, 6)
 	branding_style.content_margin_left = 16
 	branding_style.content_margin_right = 18
 	branding_style.content_margin_top = 11
@@ -288,12 +275,12 @@ func _build_branding_card() -> void:
 	accent_pill.custom_minimum_size = Vector2(34, 34)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
-	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
+	accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
+	accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
 	accent_pill_style.set_border_width_all(1)
 	accent_pill_style.set_corner_radius_all(10)
-	accent_pill_style.shadow_size = 16
-	accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
+	accent_pill_style.shadow_size = 8
+	accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
 	accent_pill.add_theme_stylebox_override("panel", accent_pill_style)
 	hbox.add_child(accent_pill)
 
@@ -330,12 +317,12 @@ func _build_branding_card() -> void:
 	tag_panel = PanelContainer.new()
 	tag_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_style = StyleBoxFlat.new()
-	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
+	tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
+	tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.30)
 	tag_style.set_border_width_all(1)
 	tag_style.set_corner_radius_all(4)
-	tag_style.shadow_size = 8
-	tag_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+	tag_style.shadow_size = 4
+	tag_style.shadow_color = Color(0.0, 0.0, 0.0, 0.25)
 	tag_style.content_margin_left = 6
 	tag_style.content_margin_right = 6
 	tag_style.content_margin_top = 1
@@ -347,7 +334,7 @@ func _build_branding_card() -> void:
 	tag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tag_label.text = "PIANO"
 	tag_label.add_theme_font_size_override("font_size", 9)
-	tag_label.add_theme_color_override("font_color", active_color.lightened(0.40))
+	tag_label.add_theme_color_override("font_color", active_color.lightened(0.35))
 	tag_panel.add_child(tag_label)
 
 	divider_panel = NeonLaserDivider.new()
@@ -654,20 +641,20 @@ func _apply_accent_colors() -> void:
 		divider_panel.active_color = active_color
 		divider_panel.queue_redraw()
 	if branding_style != null:
-		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.70)
-		branding_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.50)
+		branding_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.25)
+		branding_style.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
 	if accent_pill_style != null:
-		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
-		accent_pill_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
+		accent_pill_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
+		accent_pill_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.35)
+		accent_pill_style.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
 	if badge_icon != null:
 		badge_icon.add_theme_color_override("font_color", active_color)
 	if tag_style != null:
-		tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.22)
-		tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.80)
-		tag_style.shadow_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+		tag_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.12)
+		tag_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.30)
+		tag_style.shadow_color = Color(0.0, 0.0, 0.0, 0.25)
 	if tag_label != null:
-		tag_label.add_theme_color_override("font_color", active_color.lightened(0.40))
+		tag_label.add_theme_color_override("font_color", active_color.lightened(0.35))
 	if divider_style != null:
 		divider_style.bg_color = Color(active_color.r, active_color.g, active_color.b, 0.85)
 	if subtitle_label != null:
