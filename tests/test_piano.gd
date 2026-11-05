@@ -41,6 +41,7 @@ func _run() -> void:
 			whites += 1
 	check(whites == 52, "52 whites / 36 blacks")
 	check(app.qwerty_enabled and app.sustain_enabled and app.synth_enabled, "Initial toggles ON")
+	check(Engine.max_fps == 120, "Engine frame rate limit is set to 120 FPS")
 	check(app.indicators.sustain.visible and app.buttons.size() == 5, "All studio actions in top dock")
 	check(app.volume_slider.max_value == 100 and app.volume_slider.value == 100 and app.audio.master_volume == 2.0, "New default 100 percent equals old 200 percent")
 	check(app.audio.pool.size() == 64, "64 preallocated players")

@@ -89,7 +89,7 @@ var settings_path: String = SETTINGS_PATH
 var _loading_settings: bool = true
 
 func _ready() -> void:
-	Engine.max_fps = 60
+	Engine.max_fps = 120
 	get_tree().auto_accept_quit = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if "use_hdr_2d" in get_viewport():
