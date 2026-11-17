@@ -33,6 +33,7 @@ func _init() -> void:
 	songs.append({"id": "howls-moving-castle-god-maniac", "title": "Howl's Moving Castle (Parte God Maníaca) - Joe Hisaishi", "page": 0, "end_page": 0, "source": "Tango / Vals Maníaco con Octavas", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_parte_god_maniaca.txt", "letras-040")})
 	songs.append({"id": "kamyus-waltz", "title": "Kamyu's Waltz - Dragon Quest XI (Erik's Theme)", "page": 0, "end_page": 0, "source": "Dragon Quest XI / Sugiyama", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/kamyus_waltz.txt")})
 	songs.append({"id": "embers-of-the-past", "title": "Embers of the Past - Joshua Kyan Aalampour", "page": 0, "end_page": 0, "source": "Joshua Kyan Aalampour / Vals en La menor", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/embers_of_the_past.txt")})
+	songs.append({"id": "howls-moving-castle-flavio-belardo", "title": "Howl's Moving Castle - Flavio Belardo (Piano Arrangement)", "page": 0, "end_page": 0, "source": "Flavio Belardo / Merry-Go-Round of Life", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_flavio_belardo.txt")})
 
 
 static func source_description(song: Dictionary) -> String:
