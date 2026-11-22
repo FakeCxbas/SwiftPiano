@@ -262,6 +262,7 @@ func _build_ui() -> void:
 	menu.volume_changed.connect(_set_volume)
 	menu.song_requested.connect(_load_song)
 	menu.appearance_changed.connect(_set_appearance)
+	menu.anime_hands_toggled.connect(set_anime_hands_enabled)
 	menu.instrument_changed.connect(_change_instrument)
 	menu.bar_style_changed.connect(_change_bar_style)
 	menu.reverb_preset_changed.connect(_change_reverb_preset)
@@ -703,6 +704,13 @@ func set_creator_texts(channel: String, subtitle: String) -> void:
 		creator_overlay.set_subtitle_text(subtitle)
 	save_user_settings()
 
+func set_anime_hands_enabled(enabled: bool) -> void:
+	if keyboard != null:
+		keyboard.anime_hands_enabled = enabled
+	if menu != null:
+		menu.set_anime_hands_enabled(enabled)
+	save_user_settings()
+
 func save_user_settings(path: String = settings_path) -> void:
 	if _loading_settings:
 		return
@@ -711,6 +719,8 @@ func save_user_settings(path: String = settings_path) -> void:
 	var cfg = ConfigFile.new()
 	cfg.set_value("appearance", "active_color", "#" + active_color.to_html(false))
 	cfg.set_value("appearance", "rainbow", rainbow)
+	if keyboard != null:
+		cfg.set_value("appearance", "anime_hands_enabled", keyboard.anime_hands_enabled)
 	cfg.set_value("appearance", "light_mode", current_light_mode)
 	if visualizer != null:
 		cfg.set_value("appearance", "bar_style", visualizer.bar_style)
@@ -743,6 +753,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 		_loading_settings = false
 		return false
 	_loading_settings = true
+	set_anime_hands_enabled(bool(cfg.get_value("appearance", "anime_hands_enabled", true)))
 	var col_str = str(cfg.get_value("appearance", "active_color", "#" + active_color.to_html(false)))
 	var saved_color = Color.from_string(col_str, active_color)
 	var saved_rainbow = bool(cfg.get_value("appearance", "rainbow", rainbow))

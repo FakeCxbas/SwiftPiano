@@ -35,6 +35,57 @@ func _run() -> void:
 	for midi in range(36, 97):
 		check(Keymap.labels().has(midi), "Missing label %d" % midi)
 	check(app.keyboard.key_rects.size() == 88, "88 keys")
+	# Anime Hands overlay follows the visible key centers and splits at MIDI 60.
+	check(app.keyboard.hand_left_tex is Texture2D and app.keyboard.hand_right_tex is Texture2D, "Anime hands load left and right textures")
+	check(app.keyboard.anime_hands_enabled, "Anime hands are enabled by default")
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Idle hands rest over MIDI 48 and 72")
+	var left_center_59: float = app.keyboard.key_rects[59].get_center().x
+	var right_center_60: float = app.keyboard.key_rects[60].get_center().x
+	app._press_source("hands-boundary", [59, 60])
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, left_center_59), "MIDI 59 belongs to left hand")
+	check(is_equal_approx(app.keyboard.right_hand_target_x, right_center_60), "MIDI 60 belongs to right hand")
+	check(is_equal_approx(app.keyboard.left_hand_dip, 4.5) and is_equal_approx(app.keyboard.right_hand_dip, 4.5), "Pressing notes dips both hands by 4.5")
+	app._release_source("hands-boundary")
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Released hands return over MIDI 48 and 72")
+	app._press_source("hands-chord", [48, 52, 55, 61, 64, 67])
+	app.keyboard._process(0.0)
+	var expected_left_chord: float = (app.keyboard.key_rects[48].get_center().x + app.keyboard.key_rects[52].get_center().x + app.keyboard.key_rects[55].get_center().x) / 3.0
+	var expected_right_chord: float = (app.keyboard.key_rects[61].get_center().x + app.keyboard.key_rects[64].get_center().x + app.keyboard.key_rects[67].get_center().x) / 3.0
+	check(is_equal_approx(app.keyboard.left_hand_target_x, expected_left_chord), "Left hand tracks the mean center of a chord")
+	check(is_equal_approx(app.keyboard.right_hand_target_x, expected_right_chord), "Right hand tracks the mean center of a chord including black keys")
+	app._press_source("hands-duplicate", [48, 52])
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, expected_left_chord), "Overlapping sources do not double-count notes in hand centroids")
+	app._release_source("hands-duplicate")
+	app._release_source("hands-chord")
+	app.set_key_range_mode("central_61")
+	var hidden_note: int = 21
+	app._press_source("hands-hidden", [hidden_note])
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Notes outside key_rects do not move the hands")
+	app._release_source("hands-hidden")
+	app.set_key_range_mode("full_88")
+	var hand_x_before_motion: float = app.keyboard.left_hand_x
+	app._press_source("hands-motion", [36])
+	app.keyboard._process(0.0)
+	app.keyboard._process(0.01)
+	check(app.keyboard.left_hand_x < hand_x_before_motion and app.keyboard.left_hand_x > app.keyboard.left_hand_target_x, "Hands interpolate toward a newly pressed note")
+	app._release_source("hands-motion")
+	app.keyboard._process(0.0)
+	app.keyboard._process(10.0)
+	check(is_equal_approx(app.keyboard.left_hand_x, app.keyboard.left_hand_target_x) and is_equal_approx(app.keyboard.right_hand_x, app.keyboard.right_hand_target_x), "Large delta clamps hand interpolation to its target")
+	check(is_zero_approx(app.keyboard.left_hand_dip) and is_zero_approx(app.keyboard.right_hand_dip), "Large delta fully decays hand dip")
+	app.keyboard.anime_hands_enabled = false
+	check(not app.keyboard.anime_hands_enabled, "Anime hands can be disabled")
+	var hand_x_when_disabled: float = app.keyboard.left_hand_x
+	app._press_source("hands-disabled", [36])
+	app.keyboard._process(1.0)
+	check(is_equal_approx(app.keyboard.left_hand_x, hand_x_when_disabled) and is_zero_approx(app.keyboard.left_hand_dip), "Disabled hands do not animate or dip")
+	app._release_source("hands-disabled")
+	app.keyboard.anime_hands_enabled = true
+	check(app.keyboard.anime_hands_enabled, "Anime hands can be enabled again")
 	var whites = 0
 	for midi in app.keyboard.key_rects:
 		if not Keymap.is_black(midi):

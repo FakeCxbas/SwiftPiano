@@ -46,6 +46,7 @@ func _run() -> void:
 	
 	# Check BrandingCard defaults & positioning when zen_mode == false vs true
 	var co = app.creator_overlay
+	check(app.keyboard.anime_hands_enabled and app.menu.anime_hands_toggle.button_pressed, "Anime hands start enabled and the appearance toggle is synced")
 	check(co.branding_enabled and co.branding_card.visible, "BrandingCard enabled and visible by default")
 	check(co.badge_icon != null and co.badge_icon.text == "♪", "BrandingCard features illuminated music note badge")
 	check(co.tag_panel != null and not co.tag_panel.visible, "Tag pill 'PIANO' is hidden per user request")
@@ -358,6 +359,8 @@ func _run() -> void:
 	app.set_creator_texts("@TestCreator", "Custom Persistent Subtitle")
 	app.set_auto_loop_enabled(false)
 	app._set_volume(45.0)
+	app.menu.anime_hands_toggle.button_pressed = false
+	check(not app.keyboard.anime_hands_enabled and not app.menu.anime_hands_toggle.button_pressed, "Appearance toggle disables anime hands on the keyboard")
 	app.save_user_settings(test_cfg_path)
 	check(FileAccess.file_exists(test_cfg_path), "Settings config file saved to user://")
 
@@ -374,8 +377,12 @@ func _run() -> void:
 	app.set_creator_texts("@DragonCxbas", "Virtual Piano Sheet in Description")
 	app.set_auto_loop_enabled(true)
 	app._set_volume(100.0)
+	app.set_anime_hands_enabled(true)
 
 	app.load_user_settings(test_cfg_path)
+	check(not app.keyboard.anime_hands_enabled and not app.menu.anime_hands_toggle.button_pressed, "Persisted anime hands setting restores keyboard and menu toggle")
+	app.set_anime_hands_enabled(true)
+	check(app.keyboard.anime_hands_enabled and app.menu.anime_hands_toggle.button_pressed, "Anime hands setter synchronizes keyboard and appearance toggle")
 	check(is_equal_approx(app.volume_slider.value, 45.0), "Persisted volume restored to 45%")
 	check(app.volume_label.text == "45%", "Persisted volume label restored")
 	check(co.wave_badge != null and co.wave_badge.get_parent() == co.accent_pill, "LiveWaveBadge present and attached to accent_pill")
