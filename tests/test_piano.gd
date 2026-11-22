@@ -86,6 +86,21 @@ func _run() -> void:
 	app._release_source("hands-disabled")
 	app.keyboard.anime_hands_enabled = true
 	check(app.keyboard.anime_hands_enabled, "Anime hands can be enabled again")
+	# Upcoming notes anticipate a hand only when that hand is idle. Active notes
+	# continue to own the target even when a later step points elsewhere.
+	var left_anticipation: float = app.keyboard.key_rects[40].get_center().x
+	var right_anticipation: float = app.keyboard.key_rects[84].get_center().x
+	app.keyboard.set_hand_anticipation(left_anticipation, right_anticipation)
+	app.keyboard._process(0.01)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, left_anticipation) and is_equal_approx(app.keyboard.right_hand_target_x, right_anticipation), "Idle hands target the upcoming-note centroids")
+	check(not is_zero_approx(app.keyboard.left_hand_rot) or not is_zero_approx(app.keyboard.right_hand_rot), "Hands rotate while moving toward anticipation targets")
+	app._press_source("hands-priority", [52])
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[52].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, right_anticipation), "Active notes take priority over anticipation per hand")
+	app._release_source("hands-priority")
+	app.keyboard.set_hand_anticipation(-1.0, -1.0)
+	app.keyboard._process(0.0)
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Hands return to their idle resting keys when no notes are active or anticipated")
 	var whites = 0
 	for midi in app.keyboard.key_rects:
 		if not Keymap.is_black(midi):
@@ -307,7 +322,7 @@ func _run() -> void:
 	app.menu.song_list.item_selected.emit(1)
 	check(not app.menu.load_button.disabled, "Selected playable song enables Load")
 	app.menu.load_button.pressed.emit()
-	check(app.selected_song == "letras-002" and not app.auto_enabled and app.step_index == 0, "Song loads paused from library")
+	check(app.selected_song == "letras-002" and app.bot_enabled and not app.auto_enabled and app.step_index == 1, "Loading a song autostarts playback at its first step")
 	app.sheet_text_edit.text = "[ceg] t"
 	app._load_song(2)
 	app._load_song(1)

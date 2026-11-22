@@ -36,6 +36,11 @@ var left_hand_dip: float = 0.0
 var right_hand_dip: float = 0.0
 var left_hand_target_x: float = 0.0
 var right_hand_target_x: float = 0.0
+var left_hand_rot: float = 0.0
+var right_hand_rot: float = 0.0
+var hand_anticipation_left_x: float = -1.0
+var hand_anticipation_right_x: float = -1.0
+var elapsed_hands: float = 0.0
 
 var key_glow_layer: Node2D
 var gaussian_tex: ImageTexture
@@ -91,6 +96,7 @@ func _request_render() -> void:
 		key_glow_layer.queue_redraw()
 
 func _process(delta: float) -> void:
+	elapsed_hands += delta
 	var changed = false
 	if not illumination.is_empty():
 		for midi in illumination.keys():
@@ -119,14 +125,14 @@ func _process(delta: float) -> void:
 				
 	if anime_hands_enabled:
 		_update_hand_targets()
-		var previous: Vector4 = Vector4(left_hand_x, right_hand_x, left_hand_dip, right_hand_dip)
-		var weight: float = clampf(delta * 14.0, 0.0, 1.0)
+		var weight: float = clampf(delta * 12.0, 0.0, 1.0)
 		left_hand_x = lerpf(left_hand_x, left_hand_target_x, weight)
 		right_hand_x = lerpf(right_hand_x, right_hand_target_x, weight)
+		left_hand_rot = lerpf(left_hand_rot, clampf((left_hand_target_x - left_hand_x) * 0.002, -0.06, 0.06), minf(delta * 8.0, 1.0))
+		right_hand_rot = lerpf(right_hand_rot, clampf((right_hand_target_x - right_hand_x) * 0.002, -0.06, 0.06), minf(delta * 8.0, 1.0))
 		left_hand_dip = move_toward(left_hand_dip, 0.0, delta * 24.0)
 		right_hand_dip = move_toward(right_hand_dip, 0.0, delta * 24.0)
-		if previous != Vector4(left_hand_x, right_hand_x, left_hand_dip, right_hand_dip):
-			changed = true
+		queue_redraw()
 	if changed:
 		_request_render()
 
@@ -181,9 +187,16 @@ func _hand_centroid(left: bool, rest_midi: int) -> float:
 			count += 1
 	if count > 0:
 		return total / float(count)
+	var anticipation: float = hand_anticipation_left_x if left else hand_anticipation_right_x
+	if anticipation > 0.0:
+		return anticipation
 	var rest: int = clampi(rest_midi, visible_midi_range.x, visible_midi_range.y)
 	var rest_rect: Rect2 = key_rects.get(rest, Rect2())
 	return rest_rect.get_center().x
+
+func set_hand_anticipation(left_x: float, right_x: float) -> void:
+	hand_anticipation_left_x = left_x
+	hand_anticipation_right_x = right_x
 
 func _update_hand_targets() -> void:
 	left_hand_target_x = _hand_centroid(true, 48)
@@ -478,12 +491,14 @@ func _draw() -> void:
 				white_count += 1
 		if white_count > 0:
 			var hand_w: float = white_key_width / float(white_count) * 4.5
-			_draw_hand(hand_left_tex, left_hand_x, left_hand_dip, hand_w)
-			_draw_hand(hand_right_tex, right_hand_x, right_hand_dip, hand_w)
+			_draw_hand(hand_left_tex, left_hand_x, left_hand_dip, hand_w, left_hand_rot)
+			_draw_hand(hand_right_tex, right_hand_x, right_hand_dip, hand_w, right_hand_rot)
 
-func _draw_hand(texture: Texture2D, center_x: float, dip: float, width: float) -> void:
+func _draw_hand(texture: Texture2D, center_x: float, dip: float, width: float, rot: float) -> void:
 	var hand_size: Vector2 = Vector2(width, width * texture.get_height() / float(texture.get_width()))
-	var origin: Vector2 = Vector2(center_x - width * 0.5, size.y * 0.15 + dip)
+	var idle_y: float = sin(elapsed_hands * 2.2) * 1.5 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
+	var pivot: Vector2 = Vector2(width * 0.5, hand_size.y * 0.72)
+	var origin: Vector2 = Vector2(center_x - width * 0.5, size.y * 0.15 + dip + idle_y)
 	# Fade the wrist using vertex alpha, preserving the supplied transparent sprite.
 	for shadow: bool in [true, false]:
 		var offset: Vector2 = Vector2(2.0, 3.0) if shadow else Vector2.ZERO
@@ -494,7 +509,7 @@ func _draw_hand(texture: Texture2D, center_x: float, dip: float, width: float) -
 			var uv: PackedVector2Array = PackedVector2Array([Vector2(0, top), Vector2(1, top), Vector2(1, bottom), Vector2(0, bottom)])
 			var points: PackedVector2Array = PackedVector2Array()
 			for point: Vector2 in uv:
-				points.append(origin + offset + point * hand_size)
+				points.append(origin + offset + pivot + (point * hand_size - pivot).rotated(rot))
 			var bottom_tint: Color = tint
 			if segment == 1:
 				bottom_tint.a = 0.0

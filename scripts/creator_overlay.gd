@@ -216,6 +216,7 @@ func _exit_tree() -> void:
 	bold_font = null
 
 func _process(delta: float) -> void:
+	_update_playback_control()
 	if main_ref != null:
 		if main_ref.steps.size() != _synced_steps_count or main_ref.step_index != _synced_step_index:
 			var step_changed = (main_ref.step_index != _synced_step_index and main_ref.steps.size() == _synced_steps_count)
@@ -229,6 +230,24 @@ func _process(delta: float) -> void:
 			var mins = int(rec_elapsed_sec) / 60
 			var secs = int(rec_elapsed_sec) % 60
 			rec_label.text = "● REC  %02d:%02d" % [mins, secs]
+
+func _update_playback_control() -> void:
+	var playing: bool = main_ref != null and main_ref.bot_enabled
+	if wave_badge != null:
+		wave_badge.visible = playing
+	if badge_icon != null:
+		badge_icon.visible = not playing
+		badge_icon.text = "▶"
+	if accent_pill != null:
+		accent_pill.tooltip_text = "Pausar reproducción (Ctrl+P o Clic)" if playing else "Reproducir canción (Ctrl+P o Clic)"
+
+func _playback_control_input(event: InputEvent) -> void:
+	var clicked: bool = event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed
+	var activated: bool = event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ENTER or event.keycode == KEY_SPACE)
+	if (clicked or activated) and main_ref != null:
+		main_ref.toggle_bot_mode()
+		_update_playback_control()
+		get_viewport().set_input_as_handled()
 
 func _build_branding_card() -> void:
 	branding_card = PanelContainer.new()
@@ -290,7 +309,10 @@ func _build_branding_card() -> void:
 	
 	accent_pill = Panel.new()
 	accent_pill.name = "AccentPill"
-	accent_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	accent_pill.mouse_filter = Control.MOUSE_FILTER_STOP
+	accent_pill.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	accent_pill.focus_mode = Control.FOCUS_ALL
+	accent_pill.gui_input.connect(_playback_control_input)
 	accent_pill.custom_minimum_size = Vector2(36, 36)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	accent_pill_style = StyleBoxFlat.new()
@@ -311,9 +333,12 @@ func _build_branding_card() -> void:
 
 	badge_icon = Label.new()
 	badge_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_icon.text = "♪"
-	badge_icon.visible = false
+	badge_icon.text = "▶"
+	badge_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	accent_pill.add_child(badge_icon)
+	badge_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_update_playback_control()
 	
 	var vbox = VBoxContainer.new()
 	vbox.name = "BrandingVBox"
@@ -453,7 +478,11 @@ func _build_live_sheet_hud() -> void:
 	# Current step capsule (step_index) - mathematically locked to exact center of inner
 	current_step_panel = PanelContainer.new()
 	current_step_panel.name = "CurrentStepCapsule"
-	current_step_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	current_step_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	current_step_panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	current_step_panel.focus_mode = Control.FOCUS_ALL
+	current_step_panel.tooltip_text = "Clic para Reproducir / Pausar"
+	current_step_panel.gui_input.connect(_playback_control_input)
 	current_step_style = StyleBoxFlat.new()
 	current_step_style.bg_color = Color(0.08, 0.10, 0.16, 0.65)
 	current_step_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)

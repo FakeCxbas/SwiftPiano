@@ -58,6 +58,7 @@ var bot_bpm: float = 120.0
 var _bot_elapsed: float = 0.0
 var _bot_current_delay: float = 0.25
 var _bot_note_released: bool = false
+var _bot_finishing: bool = false
 var step_delays: Array[float] = []
 var audio: Node
 var visualizer: Control
@@ -239,7 +240,13 @@ func _process(delta: float) -> void:
 	if visualizer != null:
 		visualizer.melody_color = active_color
 		visualizer.set_playback_timing(step_delays, _bot_current_delay if bot_enabled else _get_step_delay(step_index), user_transposition)
-		visualizer.set_playback_context(steps, step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or auto_enabled)
+		visualizer.set_playback_context(steps, steps.size() if _bot_finishing else step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or auto_enabled)
+
+	if visualizer != null and keyboard != null:
+		var centroids: Dictionary = visualizer.get_upcoming_note_centroids(0.40)
+		var left_x: float = float(centroids.get("left", -1.0)) if centroids.get("has_left", false) else -1.0
+		var right_x: float = float(centroids.get("right", -1.0)) if centroids.get("has_right", false) else -1.0
+		keyboard.set_hand_anticipation(left_x, right_x)
 
 func _build_ui() -> void:
 	menu = StudioMenu.new()
@@ -631,7 +638,7 @@ func _get_step_delay(idx: int) -> float:
 	return clampf(60.0 / maxf(1.0, bot_bpm * 2.0), 0.04, 2.0)
 
 func _trigger_bot_step() -> void:
-	if steps.is_empty():
+	if _bot_finishing or steps.is_empty():
 		set_bot_enabled(false)
 		return
 	_release_source("bot")
@@ -642,6 +649,8 @@ func _trigger_bot_step() -> void:
 	_bot_current_delay = _get_step_delay(idx)
 	_bot_note_released = false
 	var vels: Dictionary = step.get("velocities", {})
+	if visualizer != null:
+		visualizer.record_playback_step(step, _bot_current_delay, transposition)
 	_press_source("bot", step.notes, vels)
 	if idx + 1 < steps.size():
 		step_index = idx + 1
@@ -649,9 +658,7 @@ func _trigger_bot_step() -> void:
 		step_index = 0
 	else:
 		step_index = steps.size() - 1
-		set_bot_enabled(false)
-		_refresh_progress()
-		return
+		_bot_finishing = true
 	_refresh_progress()
 
 func set_auto_loop_enabled(enabled: bool) -> void:
@@ -668,12 +675,15 @@ func set_bot_enabled(enabled: bool) -> void:
 			menu.set_creator_bot(bot_enabled, false)
 		return
 	bot_enabled = next_state
+	_bot_finishing = false
 	_bot_elapsed = 0.0
 	if bot_enabled:
 		_trigger_bot_step()
 	else:
 		_release_source("bot")
 		_bot_note_released = true
+		if visualizer != null:
+			visualizer.set_playback_context(steps, step_index, 0.0, bot_bpm, false)
 	if menu != null:
 		menu.set_creator_bot(bot_enabled, false)
 	_refresh()
@@ -868,6 +878,7 @@ func _load_song(index: int) -> void:
 	var song = library.songs[index]
 	if not song.has_sheet:
 		return
+	set_bot_enabled(false)
 	menu.search_field.release_focus()
 	menu.song_list.release_focus()
 	menu.release_creator_focus()
@@ -897,6 +908,9 @@ func _load_song(index: int) -> void:
 	_sync_creator_song_title()
 	menu.show_section("sheet")
 	popup.show()
+	set_bot_enabled(true)
+	if creator_overlay != null:
+		creator_overlay.trigger_toast("Reproduciendo: %s • Clic en ▶ o Ctrl+P para pausar" % song.title)
 	_refresh()
 
 func _set_appearance(color: Color, use_rainbow: bool, light_setting: Variant = "supernova") -> void:
@@ -990,6 +1004,8 @@ func _popup_action(action: String) -> void:
 	_blur()
 	match action:
 		"Auto":
+			if bot_enabled:
+				set_bot_enabled(false)
 			auto_enabled = not auto_enabled and not steps.is_empty()
 		"Paste":
 			if drafts.has(selected_song):

@@ -34,6 +34,16 @@ func run() -> void:
 	var app = load("res://scenes/main.tscn").instantiate()
 	root.add_child(app)
 	await process_frame
+	app.sheet_text_edit.text = "[ceg] [dfa]"
+	app._compile_sheet()
+	app.set_bot_enabled(false)
+	await click(app.creator_overlay.accent_pill)
+	check(app.bot_enabled, "Clicking the accent pill starts playback")
+	await click(app.creator_overlay.current_step_panel)
+	check(not app.bot_enabled, "Clicking the active step capsule pauses playback")
+	await click(app.creator_overlay.current_step_panel)
+	check(app.bot_enabled, "Clicking the active step capsule resumes playback")
+	app.set_bot_enabled(false)
 	await click(app.buttons.library)
 	check(app.popup.visible and app.menu.section == "library", "Pointer opens library")
 	await click(app.menu.close_button)
