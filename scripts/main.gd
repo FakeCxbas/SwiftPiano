@@ -236,6 +236,11 @@ func _process(delta: float) -> void:
 				_bot_elapsed -= _bot_current_delay
 				_trigger_bot_step()
 
+	if visualizer != null:
+		visualizer.melody_color = active_color
+		visualizer.set_playback_timing(step_delays, _bot_current_delay if bot_enabled else _get_step_delay(step_index), user_transposition)
+		visualizer.set_playback_context(steps, step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or auto_enabled)
+
 func _build_ui() -> void:
 	menu = StudioMenu.new()
 	ui_layer.add_child(menu)

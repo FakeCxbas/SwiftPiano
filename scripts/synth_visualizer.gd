@@ -14,8 +14,8 @@ var key_range_mode: String = "full_88"
 var visible_midi_range: Vector2i = Vector2i(21, 108)
 var shorts_mode: bool = false
 var horizontal_bounds: Vector2 = Vector2.ZERO
-var elapsed = 0.0
-var enabled = true
+var elapsed: float = 0.0
+var enabled: bool = true
 var light_mode: String = "supernova"
 var bar_style: String = "laser_crystal"
 var rhythm_flashes: bool = false
@@ -58,6 +58,19 @@ var bg_shader_rect: ColorRect
 var bg_mat: ShaderMaterial
 var bars_container: Control
 var bar_nodes: Array[ColorRect] = []
+var perspective_layer: Node2D
+var perspective_enabled: bool = true
+var melody_color: Color = Color("#a9c6ff")
+var taper_ratio: float = 0.72
+var camera_tilt: float = 0.35
+var playback_steps: Array = []
+var playback_index: int = 0
+var playback_progress: float = 0.0
+var playback_bpm: float = 120.0
+var playback_active: bool = false
+var playback_delays: Array = []
+var playback_current_delay: float = 0.0
+var playback_transposition: int = 0
 var halo: Node2D
 var gaussian_tex: ImageTexture
 
@@ -121,6 +134,11 @@ func _ready() -> void:
 		bars_container.add_child(cr)
 		bar_nodes.append(cr)
 	
+	perspective_layer = Node2D.new()
+	perspective_layer.draw.connect(_draw_perspective)
+	add_child(perspective_layer)
+	resized.connect(_refresh_perspective)
+
 	# Layer 2: Additive halo node for Gaussian radial emitter & particle sparks
 	halo = Node2D.new()
 	var additive = CanvasItemMaterial.new()
@@ -265,6 +283,8 @@ func trigger_flash(color: Color, strength: float = 1.0, midis: Array = []) -> vo
 		halo.queue_redraw()
 
 func note_on(token: int, midi: int, color: Color = Color("#64e8d0")) -> void:
+	if midi < 21 or midi > 108:
+		return
 	recent_strikes.append(elapsed)
 	bars[token] = {"midi": midi, "born": elapsed, "released": -1.0, "color": color}
 	_trigger_key_splash(midi, color)
@@ -397,6 +417,7 @@ func _process(delta: float) -> void:
 	# Update background show shader
 	_update_bg_shader(delta)
 	
+	_refresh_perspective()
 	# Update note bar nodes
 	_update_bars()
 	
@@ -418,7 +439,7 @@ func _process(delta: float) -> void:
 	elif halo.visible:
 		queue_redraw()
 		halo.queue_redraw()
-	halo.visible = enabled and (not bars.is_empty() or not released.is_empty() or has_flash or has_impacts or not sparks.is_empty())
+	halo.visible = enabled and (perspective_enabled or not bars.is_empty() or not released.is_empty() or has_flash or has_impacts or not sparks.is_empty())
 
 func _update_bg_shader(_delta: float) -> void:
 	if bg_shader_rect == null:
@@ -496,7 +517,7 @@ func _update_bg_shader(_delta: float) -> void:
 			bg_shader_rect.visible = false
 
 func _update_bars() -> void:
-	if not enabled or bars_container == null:
+	if not enabled or bars_container == null or perspective_enabled:
 		for node in bar_nodes:
 			node.visible = false
 		return
@@ -570,6 +591,14 @@ func _draw_halos() -> void:
 	if not enabled or gaussian_tex == null:
 		return
 	
+	if perspective_enabled:
+		var left: float = horizontal_bounds.x if horizontal_bounds.y > horizontal_bounds.x else 0.0
+		var right: float = horizontal_bounds.y if horizontal_bounds.y > horizontal_bounds.x else size.x
+		var line_y: float = size.y - 2.0
+		for spread: int in range(12, 0, -1):
+			halo.draw_line(Vector2(left, line_y), Vector2(right, line_y), Color(0.55, 0.66, 1.0, 0.008 + 0.025 * exp(-float(spread) * 0.3)), float(spread) * 2.0, true)
+		halo.draw_line(Vector2(left, line_y), Vector2(right, line_y), Color(1.8, 1.8, 1.8, 0.92), 1.3, true)
+
 	# 1. Contact point: Broad soft diffuse outer halo and Central HDR Hotspot for every active note
 	# Zero rects, zero arcs: Gaussian radial light emitter in BLEND_MODE_ADD
 	for bar in bars.values():
@@ -613,9 +642,139 @@ func _draw_halos() -> void:
 		var col: Color = kr.color
 		var rw = kr.radius * 2.2
 		var rh = kr.radius * 1.4
+		if perspective_enabled:
+			halo.draw_arc(kr.pos, kr.radius, PI, TAU, 32, Color(col.r * 1.4, col.g * 1.4, col.b * 1.4, a), 1.4, true)
 		var rrect = Rect2(kr.pos.x - rw * 0.5, kr.pos.y - rh * 0.5, rw, rh)
 		halo.draw_texture_rect(gaussian_tex, rrect, false, Color(col.r * 1.4, col.g * 1.4, col.b * 1.4, a))
 	
 	# 4. Particles (Star shower, sparks, glints) with physics & velocity stretch
 	if not sparks.is_empty():
 		_draw_sparks()
+
+# Playback uses the next step index, matching Main's bot transport.
+func set_playback_context(steps: Array, current_index: int, step_progress: float, bpm: float, is_active: bool) -> void:
+	playback_steps = steps
+	playback_index = clampi(current_index, 0, maxi(0, steps.size() - 1))
+	playback_progress = clampf(step_progress, 0.0, 1.0)
+	playback_bpm = maxf(1.0, bpm)
+	playback_active = is_active and not steps.is_empty()
+	_refresh_perspective()
+
+func set_playback_timing(delays: Array, current_delay: float, user_transposition: int = 0) -> void:
+	playback_delays = delays
+	playback_current_delay = maxf(0.0, current_delay)
+	playback_transposition = user_transposition
+
+func _refresh_perspective() -> void:
+	if perspective_layer != null:
+		perspective_layer.visible = enabled and perspective_enabled
+		perspective_layer.queue_redraw()
+	if halo != null and perspective_enabled:
+		halo.queue_redraw()
+
+# This affine horizontal projection is identity on the keyboard contact plane.
+func project_point(point: Vector2) -> Vector2:
+	var depth: float = clampf(1.0 - point.y / maxf(1.0, size.y), 0.0, 1.0)
+	var taper: float = lerpf(1.0, clampf(taper_ratio, 0.05, 1.0), depth)
+	var center: float = size.x * 0.5
+	if horizontal_bounds.y > horizontal_bounds.x:
+		center = (horizontal_bounds.x + horizontal_bounds.y) * 0.5
+	var projected_y: float = size.y * (1.0 - depth) / (1.0 + clampf(camera_tilt, 0.0, 2.0) * depth)
+	return Vector2(center + (point.x - center) * taper, projected_y)
+
+func projected_key_edges(midi: int, y: float) -> Vector2:
+	if not key_rects.has(midi):
+		return Vector2.ZERO
+	var key: Rect2 = key_rects[midi]
+	return Vector2(project_point(Vector2(key.position.x, y)).x, project_point(Vector2(key.end.x, y)).x)
+
+static func musical_note_name(midi: int) -> String:
+	if midi < 21 or midi > 108:
+		return ""
+	var names: PackedStringArray = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+	return names[midi % 12]
+
+func _preview_delay(index: int) -> float:
+	if index >= 0 and index < playback_delays.size() and float(playback_delays[index]) > 0.0:
+		return clampf(float(playback_delays[index]) * 120.0 / playback_bpm, 0.03, 4.0)
+	return clampf(30.0 / playback_bpm, 0.04, 2.0)
+
+func upcoming_notes() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not playback_active or size.y <= 0.0:
+		return result
+	var interval: float = playback_current_delay if playback_current_delay > 0.0 else _preview_delay(playback_index - 1)
+	var until: float = interval * (1.0 - playback_progress)
+	for index: int in range(playback_index, mini(playback_steps.size(), playback_index + 128)):
+		if until * SPEED > size.y + 80.0:
+			break
+		var step: Variant = playback_steps[index]
+		var duration: float = _preview_delay(index)
+		if step is Dictionary and step.get("notes", []) is Array:
+			var notes: Array = step.get("notes", [])
+			var transpose: int = int(step.get("transposition", 0)) if step.get("transposition") != null else 0
+			var highest: int = -1
+			for note: Variant in notes:
+				if note is int or note is float:
+					var candidate: int = int(note) + transpose + playback_transposition
+					if candidate >= 21 and candidate <= 108 and key_rects.has(candidate):
+						highest = maxi(highest, candidate)
+			for note: Variant in notes:
+				if not (note is int or note is float):
+					continue
+				var midi: int = int(note) + transpose + playback_transposition
+				if midi < 21 or midi > 108 or not key_rects.has(midi):
+					continue
+				var key: Rect2 = key_rects[midi]
+				var height: float = maxf(18.0, duration * SPEED * 0.78)
+				var bottom: float = size.y - until * SPEED
+				result.append({"midi": midi, "melody": midi == highest and midi >= 60, "rect": Rect2(key.position.x, bottom - height, key.size.x, height)})
+		until += duration
+	return result
+
+func _draw_perspective() -> void:
+	if not enabled or not perspective_enabled or size.y <= 0.0:
+		return
+	for midi: int in range(24, 109, 12):
+		if key_rects.has(midi):
+			var key: Rect2 = key_rects[midi]
+			perspective_layer.draw_line(project_point(Vector2(key.position.x, 0.0)), Vector2(key.position.x, size.y), Color(0.54, 0.65, 0.86, 0.10), 1.0, true)
+	if playback_active:
+		for note: Dictionary in upcoming_notes():
+			_draw_perspective_pill(note.rect, int(note.midi), melody_color if note.melody else Color(0.88, 0.87, 0.81, 0.70), bool(note.melody))
+		# Held notes occupy the contact plane; previews contain only future steps.
+		for bar: Dictionary in bars.values():
+			if key_rects.has(bar.midi):
+				_draw_perspective_pill(bar_rect(bar), int(bar.midi), bar.color if int(bar.midi) >= 60 else Color(0.88, 0.87, 0.81, 0.70), int(bar.midi) >= 60)
+	else:
+		for bar: Dictionary in _visible_bars():
+			if key_rects.has(bar.midi):
+				_draw_perspective_pill(bar_rect(bar), int(bar.midi), bar.color if int(bar.midi) >= 60 else Color(0.88, 0.87, 0.81, 0.70), int(bar.midi) >= 60)
+
+func _draw_perspective_pill(rect: Rect2, midi: int, color: Color, melody: bool = false) -> void:
+	if rect.size.x <= 0.0 or rect.end.y < 0.0 or rect.position.y > size.y:
+		return
+	var face: Rect2 = rect
+	var radius: float = minf(face.size.x * 0.46, face.size.y * 0.5)
+	var points: PackedVector2Array = []
+	var centers: Array[Vector2] = [face.position + Vector2(radius, radius), Vector2(face.end.x - radius, face.position.y + radius), face.end - Vector2(radius, radius), Vector2(face.position.x + radius, face.end.y - radius)]
+	for corner: int in range(4):
+		for segment: int in range(7):
+			var angle: float = PI + float(corner) * PI * 0.5 + float(segment) * PI / 12.0
+			points.append(project_point(centers[corner] + Vector2(cos(angle), sin(angle)) * radius))
+	perspective_layer.draw_colored_polygon(points, color)
+	points.append(points[0])
+	perspective_layer.draw_polyline(points, Color(1.0, 1.0, 1.0, 0.48), 1.0, true)
+	var center: Vector2 = project_point(face.get_center())
+	var edges: Vector2 = projected_key_edges(midi, face.get_center().y)
+	var font: Font = ThemeDB.fallback_font
+	var label: String = musical_note_name(midi)
+	var font_size: int = clampi(int((edges.y - edges.x) * 0.52), 5, 15)
+	var label_size: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
+	var projected_height: float = project_point(face.end).y - project_point(face.position).y
+	var available_width: float = maxf(0.0, edges.y - edges.x - 1.0)
+	while font_size > 5 and (label_size.x > available_width or float(font_size) + 2.0 > projected_height):
+		font_size -= 1
+		label_size = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
+	if label_size.x <= available_width and projected_height >= float(font_size) + 2.0:
+		perspective_layer.draw_string(font, center + Vector2(-label_size.x * 0.5, float(font_size) * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, Color.WHITE if melody else Color("#283345"))
