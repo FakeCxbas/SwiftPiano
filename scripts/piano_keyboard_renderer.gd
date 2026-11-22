@@ -24,6 +24,25 @@ var horizontal_bounds: Vector2 = Vector2.ZERO
 var hand_left_tex: Texture2D = preload("res://assets/hands/hand_left.png")
 var hand_right_tex: Texture2D = preload("res://assets/hands/hand_right.png")
 var hand_shader: Shader = preload("res://shaders/hand_articulation.gdshader")
+var hand_3d_left_scene: PackedScene = preload("res://assets/hands/hand_3d_left.glb")
+var hand_3d_right_scene: PackedScene = preload("res://assets/hands/hand_3d_right.glb")
+
+var hands_mode: String = "3d": # "3d", "2d", "off"
+	set(mode):
+		hands_mode = mode
+		_sync_hand_mesh_visibility()
+		queue_redraw()
+
+var hands_3d_container: SubViewportContainer
+var hands_3d_viewport: SubViewport
+var hands_3d_camera: Camera3D
+var left_hand_3d: Node3D
+var right_hand_3d: Node3D
+var left_hand_skel: Skeleton3D
+var right_hand_skel: Skeleton3D
+var left_finger_bones: Array = []
+var right_finger_bones: Array = []
+var hands_3d_cam_size: float = 0.55
 
 var anime_hands_enabled: bool = true:
 	set(enabled):
@@ -172,6 +191,7 @@ func _process(delta: float) -> void:
 				right_finger_dips[i] = move_toward(right_finger_dips[i], right_finger_targets[i], delta * r_spd)
 		
 		_sync_hand_mesh_transforms()
+		_update_3d_hands_transforms()
 		queue_redraw()
 	if changed:
 		_request_render()
@@ -269,14 +289,93 @@ func _setup_anime_hand_nodes() -> void:
 	_sync_hand_mesh_visibility()
 
 func _sync_hand_mesh_visibility() -> void:
+	var show_2d = anime_hands_enabled and (hands_mode == "2d")
+	var show_3d = anime_hands_enabled and (hands_mode == "3d")
+	
 	if left_hand_mesh_node != null:
-		left_hand_mesh_node.visible = anime_hands_enabled
+		left_hand_mesh_node.visible = show_2d
 	if right_hand_mesh_node != null:
-		right_hand_mesh_node.visible = anime_hands_enabled
+		right_hand_mesh_node.visible = show_2d
 	if left_hand_shadow_node != null:
-		left_hand_shadow_node.visible = anime_hands_enabled
+		left_hand_shadow_node.visible = show_2d
 	if right_hand_shadow_node != null:
-		right_hand_shadow_node.visible = anime_hands_enabled
+		right_hand_shadow_node.visible = show_2d
+		
+	if hands_3d_container != null:
+		hands_3d_container.visible = show_3d
+
+func _setup_3d_hands() -> void:
+	if hand_3d_left_scene == null or hand_3d_right_scene == null:
+		return
+		
+	hands_3d_container = SubViewportContainer.new()
+	hands_3d_container.name = "Hands3DContainer"
+	hands_3d_container.stretch = true
+	hands_3d_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hands_3d_container.z_index = 10
+	add_child(hands_3d_container)
+	
+	hands_3d_viewport = SubViewport.new()
+	hands_3d_viewport.name = "Hands3DViewport"
+	hands_3d_viewport.transparent_bg = true
+	hands_3d_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	hands_3d_container.add_child(hands_3d_viewport)
+	
+	var world = World3D.new()
+	hands_3d_viewport.world_3d = world
+	
+	hands_3d_camera = Camera3D.new()
+	hands_3d_camera.name = "Hands3DCamera"
+	hands_3d_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	hands_3d_camera.size = hands_3d_cam_size
+	hands_3d_camera.position = Vector3(0.0, 0.50, 0.08)
+	hands_3d_camera.rotation_degrees = Vector3(-70.0, 0.0, 0.0)
+	hands_3d_viewport.add_child(hands_3d_camera)
+	
+	var main_light = DirectionalLight3D.new()
+	main_light.name = "StudioMainLight"
+	main_light.light_energy = 3.8
+	main_light.light_color = Color(1.0, 0.98, 0.95)
+	main_light.rotation_degrees = Vector3(-60.0, 15.0, 0.0)
+	hands_3d_viewport.add_child(main_light)
+	
+	var fill_light = DirectionalLight3D.new()
+	fill_light.name = "StudioFillLight"
+	fill_light.light_energy = 1.4
+	fill_light.light_color = Color(0.85, 0.90, 1.0)
+	fill_light.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+	hands_3d_viewport.add_child(fill_light)
+	
+	left_hand_3d = hand_3d_left_scene.instantiate() as Node3D
+	left_hand_3d.name = "LeftHand3D"
+	hands_3d_viewport.add_child(left_hand_3d)
+	left_hand_skel = left_hand_3d.find_child("Skeleton3D", true, false) as Skeleton3D
+	
+	right_hand_3d = hand_3d_right_scene.instantiate() as Node3D
+	right_hand_3d.name = "RightHand3D"
+	hands_3d_viewport.add_child(right_hand_3d)
+	right_hand_skel = right_hand_3d.find_child("Skeleton3D", true, false) as Skeleton3D
+	
+	var map_bones = func(skel: Skeleton3D, prefixes: Array) -> Array:
+		var res = []
+		if skel == null:
+			return res
+		for p in prefixes:
+			var arr = []
+			if p == "thumb":
+				arr.append(skel.find_bone("thumb-phalanx-proximal"))
+				arr.append(skel.find_bone("thumb-phalanx-distal"))
+			else:
+				arr.append(skel.find_bone(p + "-finger-phalanx-proximal"))
+				arr.append(skel.find_bone(p + "-finger-phalanx-intermediate"))
+				arr.append(skel.find_bone(p + "-finger-phalanx-distal"))
+			res.append(arr)
+		return res
+		
+	left_finger_bones = map_bones.call(left_hand_skel, ["pinky", "ring", "middle", "index", "thumb"])
+	right_finger_bones = map_bones.call(right_hand_skel, ["thumb", "index", "middle", "ring", "pinky"])
+	
+	_sync_hand_mesh_visibility()
 
 func _sync_hand_mesh_transforms() -> void:
 	if left_hand_mesh_node == null or right_hand_mesh_node == null:
@@ -323,6 +422,61 @@ func _sync_hand_mesh_transforms() -> void:
 		right_hand_shadow_mat.set_shader_parameter("u_finger_dip_5", right_finger_dips[4])
 		right_hand_shadow_mat.set_shader_parameter("u_time", elapsed_hands)
 
+func _update_3d_hands_transforms() -> void:
+	if hands_3d_container == null or not hands_3d_container.visible:
+		return
+	if left_hand_3d == null or right_hand_3d == null or hand_width <= 0.0 or size.y <= 0.0:
+		return
+		
+	var scale_factor: float = hands_3d_cam_size / size.y
+	var center_x: float = size.x * 0.5
+	
+	var idle_dip: float = sin(elapsed_hands * 2.2) * 0.002 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
+	
+	var l_world_x = (left_hand_x - center_x) * scale_factor
+	var l_world_y = -left_hand_dip * 0.003 + idle_dip
+	left_hand_3d.position = Vector3(l_world_x, l_world_y, 0.0)
+	left_hand_3d.rotation = Vector3(0.0, 0.0, -left_hand_rot * 1.5)
+	
+	var r_world_x = (right_hand_x - center_x) * scale_factor
+	var r_world_y = -right_hand_dip * 0.003 + idle_dip
+	right_hand_3d.position = Vector3(r_world_x, r_world_y, 0.0)
+	right_hand_3d.rotation = Vector3(0.0, 0.0, -right_hand_rot * 1.5)
+	
+	if left_hand_skel != null:
+		for f in range(left_finger_bones.size()):
+			var dip: float = left_finger_dips[f]
+			var bones: Array = left_finger_bones[f]
+			if bones.size() == 2:
+				var r0 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				var r1 = lerpf(deg_to_rad(-8.0), deg_to_rad(-32.0), dip)
+				if bones[0] >= 0: left_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
+				if bones[1] >= 0: left_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
+			elif bones.size() == 3:
+				var r0 = lerpf(deg_to_rad(-8.0), deg_to_rad(-30.0), dip)
+				var r1 = lerpf(deg_to_rad(-12.0), deg_to_rad(-45.0), dip)
+				var r2 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				if bones[0] >= 0: left_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
+				if bones[1] >= 0: left_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
+				if bones[2] >= 0: left_hand_skel.set_bone_pose_rotation(bones[2], Quaternion(Vector3.RIGHT, r2))
+
+	if right_hand_skel != null:
+		for f in range(right_finger_bones.size()):
+			var dip: float = right_finger_dips[f]
+			var bones: Array = right_finger_bones[f]
+			if bones.size() == 2:
+				var r0 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				var r1 = lerpf(deg_to_rad(-8.0), deg_to_rad(-32.0), dip)
+				if bones[0] >= 0: right_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
+				if bones[1] >= 0: right_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
+			elif bones.size() == 3:
+				var r0 = lerpf(deg_to_rad(-8.0), deg_to_rad(-30.0), dip)
+				var r1 = lerpf(deg_to_rad(-12.0), deg_to_rad(-45.0), dip)
+				var r2 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				if bones[0] >= 0: right_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
+				if bones[1] >= 0: right_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
+				if bones[2] >= 0: right_hand_skel.set_bone_pose_rotation(bones[2], Quaternion(Vector3.RIGHT, r2))
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gaussian_tex = _generate_gaussian_texture(128)
@@ -336,6 +490,7 @@ func _ready() -> void:
 	add_child(key_glow_layer)
 	
 	_setup_anime_hand_nodes()
+	_setup_3d_hands()
 	
 	resized.connect(rebuild)
 	rebuild()
@@ -370,10 +525,16 @@ func rebuild() -> void:
 	if white_k_count > 0 and hand_left_tex != null:
 		hand_width = white_key_width / float(white_k_count) * 4.5
 		hand_size = Vector2(hand_width, hand_width * float(hand_left_tex.get_height()) / float(hand_left_tex.get_width()))
+	if hands_3d_container != null and size.x > 0.0 and size.y > 0.0:
+		hands_3d_container.size = size
+		if hands_3d_camera != null and hand_width > 0.0:
+			hands_3d_cam_size = 0.15 * size.y / hand_width
+			hands_3d_camera.size = hands_3d_cam_size
 	_update_hand_targets()
 	left_hand_x = left_hand_target_x
 	right_hand_x = right_hand_target_x
 	_sync_hand_mesh_transforms()
+	_update_3d_hands_transforms()
 	_request_render()
 
 func _find_closest_finger(rel_u: float, is_left: bool) -> int:
