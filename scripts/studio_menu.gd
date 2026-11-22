@@ -8,6 +8,9 @@ const StudioSkin = preload("res://scripts/studio_theme.gd")
 signal action(id: String)
 signal volume_changed(value: float)
 signal song_requested(index: int)
+signal anime_hands_toggled(enabled: bool)
+var anime_hands_toggle: CheckButton
+
 signal appearance_changed(color: Color, rainbow: bool, light_mode: Variant)
 signal instrument_changed(id: String)
 signal bar_style_changed(id: String)
@@ -664,6 +667,12 @@ func _build_appearance() -> void:
 	rainbow_toggle.focus_mode = Control.FOCUS_NONE
 	rainbow_toggle.toggled.connect(func(_value): _emit_appearance())
 	box.add_child(rainbow_toggle)
+	anime_hands_toggle = CheckButton.new()
+	anime_hands_toggle.text = "Manos Anime"
+	anime_hands_toggle.button_pressed = true
+	anime_hands_toggle.focus_mode = Control.FOCUS_NONE
+	anime_hands_toggle.toggled.connect(func(enabled: bool) -> void: anime_hands_toggled.emit(enabled))
+	box.add_child(anime_hands_toggle)
 	
 	box = _studio_page(tabs, "Efectos")
 	var sep_bar = HSeparator.new()
@@ -1174,6 +1183,10 @@ func set_active_light_mode(id: String) -> void:
 	for key in light_mode_buttons:
 		StudioSkin.instrument_button(light_mode_buttons[key], key == current_light_mode, chosen_color)
 	_emit_appearance()
+
+func set_anime_hands_enabled(enabled: bool) -> void:
+	if anime_hands_toggle != null:
+		anime_hands_toggle.set_pressed_no_signal(enabled)
 
 func apply_appearance_state(color: Color, use_rainbow: bool, light_id: String = current_light_mode) -> void:
 	chosen_color = Color(color.r, color.g, color.b, 1.0)

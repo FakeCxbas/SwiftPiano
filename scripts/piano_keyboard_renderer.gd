@@ -21,6 +21,22 @@ var visible_midi_range: Vector2i = Vector2i(21, 108)
 var shorts_mode: bool = false
 var horizontal_bounds: Vector2 = Vector2.ZERO
 
+var hand_left_tex: Texture2D = preload("res://assets/hands/hand_left.png")
+var hand_right_tex: Texture2D = preload("res://assets/hands/hand_right.png")
+var anime_hands_enabled: bool = true:
+	set(enabled):
+		anime_hands_enabled = enabled
+		if not enabled:
+			left_hand_dip = 0.0
+			right_hand_dip = 0.0
+		queue_redraw()
+var left_hand_x: float = 0.0
+var right_hand_x: float = 0.0
+var left_hand_dip: float = 0.0
+var right_hand_dip: float = 0.0
+var left_hand_target_x: float = 0.0
+var right_hand_target_x: float = 0.0
+
 var key_glow_layer: Node2D
 var gaussian_tex: ImageTexture
 var beam_tex: ImageTexture
@@ -101,6 +117,16 @@ func _process(delta: float) -> void:
 			if value <= 0.0 and not active.has(midi):
 				depression.erase(midi)
 				
+	if anime_hands_enabled:
+		_update_hand_targets()
+		var previous: Vector4 = Vector4(left_hand_x, right_hand_x, left_hand_dip, right_hand_dip)
+		var weight: float = clampf(delta * 14.0, 0.0, 1.0)
+		left_hand_x = lerpf(left_hand_x, left_hand_target_x, weight)
+		right_hand_x = lerpf(right_hand_x, right_hand_target_x, weight)
+		left_hand_dip = move_toward(left_hand_dip, 0.0, delta * 24.0)
+		right_hand_dip = move_toward(right_hand_dip, 0.0, delta * 24.0)
+		if previous != Vector4(left_hand_x, right_hand_x, left_hand_dip, right_hand_dip):
+			changed = true
 	if changed:
 		_request_render()
 
@@ -140,7 +166,28 @@ func rebuild() -> void:
 			var next_x = round(span_left + (index + 1) * width)
 			key_rects[midi] = Rect2(x, 4, next_x - x, maxf(1, size.y - 4))
 			index += 1
+	_update_hand_targets()
+	left_hand_x = left_hand_target_x
+	right_hand_x = right_hand_target_x
 	_request_render()
+
+func _hand_centroid(left: bool, rest_midi: int) -> float:
+	var total: float = 0.0
+	var count: int = 0
+	for midi: int in active:
+		if (midi < 60) == left and key_rects.has(midi):
+			var rect: Rect2 = key_rects[midi]
+			total += rect.get_center().x
+			count += 1
+	if count > 0:
+		return total / float(count)
+	var rest: int = clampi(rest_midi, visible_midi_range.x, visible_midi_range.y)
+	var rest_rect: Rect2 = key_rects.get(rest, Rect2())
+	return rest_rect.get_center().x
+
+func _update_hand_targets() -> void:
+	left_hand_target_x = _hand_centroid(true, 48)
+	right_hand_target_x = _hand_centroid(false, 72)
 
 func hit_key(point: Vector2) -> int:
 	for black in [true, false]:
@@ -170,6 +217,11 @@ func _change_mouse(midi: int) -> void:
 		mouse_note_changed.emit(midi)
 
 func press(midi: int, color: Color = active_color) -> void:
+	if anime_hands_enabled:
+		if midi < 60:
+			left_hand_dip = 4.5
+		else:
+			right_hand_dip = 4.5
 	active[midi] = active.get(midi, 0) + 1
 	illumination[midi] = 1.0
 	depression[midi] = maxf(depression.get(midi, 0.0), 0.85)
@@ -415,6 +467,38 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, size.x, 2), Color(active_color.r, active_color.g, active_color.b, 0.65))
 	# 4. White-hot pure center filament
 	draw_rect(Rect2(0, 0.5, size.x, 0.8), Color(1.0, 1.0, 1.0, 0.25))
+
+	if anime_hands_enabled and hand_left_tex != null and hand_right_tex != null:
+		var white_key_width: float = 0.0
+		var white_count: int = 0
+		for midi: int in key_rects:
+			if not Keymap.is_black(midi):
+				var rect: Rect2 = key_rects[midi]
+				white_key_width += rect.size.x
+				white_count += 1
+		if white_count > 0:
+			var hand_w: float = white_key_width / float(white_count) * 4.5
+			_draw_hand(hand_left_tex, left_hand_x, left_hand_dip, hand_w)
+			_draw_hand(hand_right_tex, right_hand_x, right_hand_dip, hand_w)
+
+func _draw_hand(texture: Texture2D, center_x: float, dip: float, width: float) -> void:
+	var hand_size: Vector2 = Vector2(width, width * texture.get_height() / float(texture.get_width()))
+	var origin: Vector2 = Vector2(center_x - width * 0.5, size.y * 0.15 + dip)
+	# Fade the wrist using vertex alpha, preserving the supplied transparent sprite.
+	for shadow: bool in [true, false]:
+		var offset: Vector2 = Vector2(2.0, 3.0) if shadow else Vector2.ZERO
+		var tint: Color = Color(0.0, 0.0, 0.0, 0.18) if shadow else Color.WHITE
+		for segment: int in range(2):
+			var top: float = 0.0 if segment == 0 else 0.72
+			var bottom: float = 0.72 if segment == 0 else 1.0
+			var uv: PackedVector2Array = PackedVector2Array([Vector2(0, top), Vector2(1, top), Vector2(1, bottom), Vector2(0, bottom)])
+			var points: PackedVector2Array = PackedVector2Array()
+			for point: Vector2 in uv:
+				points.append(origin + offset + point * hand_size)
+			var bottom_tint: Color = tint
+			if segment == 1:
+				bottom_tint.a = 0.0
+			draw_polygon(points, PackedColorArray([tint, tint, bottom_tint, bottom_tint]), uv, texture)
 
 func _draw_key_glows() -> void:
 	if gaussian_tex == null or illumination.is_empty():
