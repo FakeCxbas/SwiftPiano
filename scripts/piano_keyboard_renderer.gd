@@ -328,23 +328,40 @@ func _setup_3d_hands() -> void:
 	hands_3d_camera.name = "Hands3DCamera"
 	hands_3d_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	hands_3d_camera.size = hands_3d_cam_size
-	hands_3d_camera.position = Vector3(0.0, 0.50, 0.08)
-	hands_3d_camera.rotation_degrees = Vector3(-70.0, 0.0, 0.0)
+	hands_3d_camera.position = Vector3(0.0, 0.0, 1.0)
+	hands_3d_camera.rotation_degrees = Vector3(0.0, 0.0, 0.0)
 	hands_3d_viewport.add_child(hands_3d_camera)
 	
 	var main_light = DirectionalLight3D.new()
 	main_light.name = "StudioMainLight"
-	main_light.light_energy = 3.8
-	main_light.light_color = Color(1.0, 0.98, 0.95)
-	main_light.rotation_degrees = Vector3(-60.0, 15.0, 0.0)
+	main_light.light_energy = 1.3
+	main_light.light_color = Color(1.0, 0.96, 0.92)
+	main_light.rotation_degrees = Vector3(-70.0, 15.0, 0.0)
 	hands_3d_viewport.add_child(main_light)
 	
 	var fill_light = DirectionalLight3D.new()
 	fill_light.name = "StudioFillLight"
-	fill_light.light_energy = 1.4
-	fill_light.light_color = Color(0.85, 0.90, 1.0)
-	fill_light.rotation_degrees = Vector3(-50.0, -30.0, 0.0)
+	fill_light.light_energy = 0.8
+	fill_light.light_color = Color(0.92, 0.95, 1.0)
+	fill_light.rotation_degrees = Vector3(-65.0, -20.0, 0.0)
 	hands_3d_viewport.add_child(fill_light)
+	
+	var top_light = DirectionalLight3D.new()
+	top_light.name = "StudioTopLight"
+	top_light.light_energy = 1.2
+	top_light.light_color = Color(1.0, 0.97, 0.95)
+	top_light.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	hands_3d_viewport.add_child(top_light)
+	
+	var env = Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.70, 0.65, 0.62)
+	env.ambient_light_energy = 0.95
+	var we = WorldEnvironment.new()
+	we.name = "StudioEnvironment"
+	we.environment = env
+	hands_3d_viewport.add_child(we)
 	
 	left_hand_3d = hand_3d_left_scene.instantiate() as Node3D
 	left_hand_3d.name = "LeftHand3D"
@@ -432,16 +449,17 @@ func _update_3d_hands_transforms() -> void:
 	var center_x: float = size.x * 0.5
 	
 	var idle_dip: float = sin(elapsed_hands * 2.2) * 0.002 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
+	var base_y: float = -0.045
 	
 	var l_world_x = (left_hand_x - center_x) * scale_factor
-	var l_world_y = -left_hand_dip * 0.003 + idle_dip
+	var l_world_y = base_y - left_hand_dip * 0.003 + idle_dip
 	left_hand_3d.position = Vector3(l_world_x, l_world_y, 0.0)
-	left_hand_3d.rotation = Vector3(0.0, 0.0, -left_hand_rot * 1.5)
+	left_hand_3d.rotation = Vector3(deg_to_rad(172.0), 0.0, -left_hand_rot * 1.5)
 	
 	var r_world_x = (right_hand_x - center_x) * scale_factor
-	var r_world_y = -right_hand_dip * 0.003 + idle_dip
+	var r_world_y = base_y - right_hand_dip * 0.003 + idle_dip
 	right_hand_3d.position = Vector3(r_world_x, r_world_y, 0.0)
-	right_hand_3d.rotation = Vector3(0.0, 0.0, -right_hand_rot * 1.5)
+	right_hand_3d.rotation = Vector3(deg_to_rad(172.0), 0.0, -right_hand_rot * 1.5)
 	
 	if left_hand_skel != null:
 		for f in range(left_finger_bones.size()):
