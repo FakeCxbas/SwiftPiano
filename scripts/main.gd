@@ -721,6 +721,11 @@ func set_anime_hands_enabled(enabled: bool) -> void:
 		menu.set_anime_hands_enabled(enabled)
 	save_user_settings()
 
+func set_hands_mode(mode: String) -> void:
+	if keyboard != null:
+		keyboard.hands_mode = mode
+	save_user_settings()
+
 func save_user_settings(path: String = settings_path) -> void:
 	if _loading_settings:
 		return
@@ -731,6 +736,7 @@ func save_user_settings(path: String = settings_path) -> void:
 	cfg.set_value("appearance", "rainbow", rainbow)
 	if keyboard != null:
 		cfg.set_value("appearance", "anime_hands_enabled", keyboard.anime_hands_enabled)
+		cfg.set_value("appearance", "hands_mode", keyboard.hands_mode)
 	cfg.set_value("appearance", "light_mode", current_light_mode)
 	if visualizer != null:
 		cfg.set_value("appearance", "bar_style", visualizer.bar_style)
@@ -764,6 +770,8 @@ func load_user_settings(path: String = settings_path) -> bool:
 		return false
 	_loading_settings = true
 	set_anime_hands_enabled(bool(cfg.get_value("appearance", "anime_hands_enabled", true)))
+	if keyboard != null:
+		keyboard.hands_mode = str(cfg.get_value("appearance", "hands_mode", "3d"))
 	var col_str = str(cfg.get_value("appearance", "active_color", "#" + active_color.to_html(false)))
 	var saved_color = Color.from_string(col_str, active_color)
 	var saved_rainbow = bool(cfg.get_value("appearance", "rainbow", rainbow))
