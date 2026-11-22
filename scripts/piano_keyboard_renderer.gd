@@ -337,30 +337,23 @@ func _setup_3d_hands() -> void:
 	
 	var main_light = DirectionalLight3D.new()
 	main_light.name = "StudioMainLight"
-	main_light.light_energy = 1.3
-	main_light.light_color = Color(1.0, 0.96, 0.92)
-	main_light.rotation_degrees = Vector3(-70.0, 15.0, 0.0)
+	main_light.light_energy = 0.95
+	main_light.light_color = Color(1.0, 0.97, 0.94)
+	main_light.rotation_degrees = Vector3(-60.0, 20.0, 0.0)
 	hands_3d_viewport.add_child(main_light)
 	
 	var fill_light = DirectionalLight3D.new()
 	fill_light.name = "StudioFillLight"
-	fill_light.light_energy = 0.8
+	fill_light.light_energy = 0.35
 	fill_light.light_color = Color(0.92, 0.95, 1.0)
-	fill_light.rotation_degrees = Vector3(-65.0, -20.0, 0.0)
+	fill_light.rotation_degrees = Vector3(-50.0, -25.0, 0.0)
 	hands_3d_viewport.add_child(fill_light)
-	
-	var top_light = DirectionalLight3D.new()
-	top_light.name = "StudioTopLight"
-	top_light.light_energy = 1.2
-	top_light.light_color = Color(1.0, 0.97, 0.95)
-	top_light.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	hands_3d_viewport.add_child(top_light)
 	
 	var env = Environment.new()
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.70, 0.65, 0.62)
-	env.ambient_light_energy = 0.95
+	env.ambient_light_color = Color(0.85, 0.80, 0.78)
+	env.ambient_light_energy = 0.30
 	var we = WorldEnvironment.new()
 	we.name = "StudioEnvironment"
 	we.environment = env
@@ -385,19 +378,15 @@ func _setup_3d_hands() -> void:
 		var outline_mat = ShaderMaterial.new()
 		outline_mat.shader = hand_3d_outline_shader
 		outline_mat.set_shader_parameter("u_outline_width", 0.0016)
-		outline_mat.set_shader_parameter("u_outline_color", Color(0.09, 0.08, 0.13, 1.0))
-		outline_mat.set_shader_parameter("u_wrist_fade_start", -0.015)
-		outline_mat.set_shader_parameter("u_wrist_fade_end", 0.018)
+		outline_mat.set_shader_parameter("u_outline_color", Color(0.09, 0.08, 0.14, 1.0))
 		
 		var anime_mat = ShaderMaterial.new()
 		anime_mat.shader = hand_3d_anime_shader
 		anime_mat.set_shader_parameter("u_albedo_tex", hand_anime_texture)
-		anime_mat.set_shader_parameter("u_skin_color", Color(0.98, 0.92, 0.88, 1.0))
-		anime_mat.set_shader_parameter("u_shadow_color", Color(0.88, 0.77, 0.72, 1.0))
-		anime_mat.set_shader_parameter("u_nail_color", Color(0.07, 0.06, 0.10, 1.0))
-		anime_mat.set_shader_parameter("u_nail_specular", 0.85)
-		anime_mat.set_shader_parameter("u_wrist_fade_start", -0.015)
-		anime_mat.set_shader_parameter("u_wrist_fade_end", 0.018)
+		anime_mat.set_shader_parameter("u_skin_color", Color(0.98, 0.91, 0.86, 1.0))
+		anime_mat.set_shader_parameter("u_shadow_color", Color(0.86, 0.74, 0.68, 1.0))
+		anime_mat.set_shader_parameter("u_nail_color", Color(0.06, 0.05, 0.09, 1.0))
+		anime_mat.set_shader_parameter("u_nail_specular", 0.90)
 		anime_mat.next_pass = outline_mat
 		
 		model.material_override = anime_mat
@@ -481,31 +470,31 @@ func _update_3d_hands_transforms() -> void:
 	var center_x: float = size.x * 0.5
 	
 	var idle_dip: float = sin(elapsed_hands * 2.2) * 0.002 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
-	var base_y: float = -0.045
+	var base_y: float = -hands_3d_cam_size * 0.5 + 0.012
 	
 	var l_world_x = (left_hand_x - center_x) * scale_factor
 	var l_world_y = base_y - left_hand_dip * 0.003 + idle_dip
 	left_hand_3d.position = Vector3(l_world_x, l_world_y, 0.0)
-	left_hand_3d.rotation = Vector3(deg_to_rad(172.0), 0.0, -left_hand_rot * 1.5)
+	left_hand_3d.rotation = Vector3(deg_to_rad(172.0), deg_to_rad(3.5), -left_hand_rot * 1.5)
 	
 	var r_world_x = (right_hand_x - center_x) * scale_factor
 	var r_world_y = base_y - right_hand_dip * 0.003 + idle_dip
 	right_hand_3d.position = Vector3(r_world_x, r_world_y, 0.0)
-	right_hand_3d.rotation = Vector3(deg_to_rad(172.0), 0.0, -right_hand_rot * 1.5)
+	right_hand_3d.rotation = Vector3(deg_to_rad(172.0), deg_to_rad(-3.5), -right_hand_rot * 1.5)
 	
 	if left_hand_skel != null:
 		for f in range(left_finger_bones.size()):
 			var dip: float = left_finger_dips[f]
 			var bones: Array = left_finger_bones[f]
 			if bones.size() == 2:
-				var r0 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
-				var r1 = lerpf(deg_to_rad(-8.0), deg_to_rad(-32.0), dip)
+				var r0 = lerpf(deg_to_rad(-10.0), deg_to_rad(-26.0), dip)
+				var r1 = lerpf(deg_to_rad(-16.0), deg_to_rad(-38.0), dip)
 				if bones[0] >= 0: left_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
 				if bones[1] >= 0: left_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
 			elif bones.size() == 3:
-				var r0 = lerpf(deg_to_rad(-8.0), deg_to_rad(-30.0), dip)
-				var r1 = lerpf(deg_to_rad(-12.0), deg_to_rad(-45.0), dip)
-				var r2 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				var r0 = lerpf(deg_to_rad(-12.0), deg_to_rad(-28.0), dip)
+				var r1 = lerpf(deg_to_rad(-22.0), deg_to_rad(-45.0), dip)
+				var r2 = lerpf(deg_to_rad(-14.0), deg_to_rad(-24.0), dip)
 				if bones[0] >= 0: left_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
 				if bones[1] >= 0: left_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
 				if bones[2] >= 0: left_hand_skel.set_bone_pose_rotation(bones[2], Quaternion(Vector3.RIGHT, r2))
@@ -515,14 +504,14 @@ func _update_3d_hands_transforms() -> void:
 			var dip: float = right_finger_dips[f]
 			var bones: Array = right_finger_bones[f]
 			if bones.size() == 2:
-				var r0 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
-				var r1 = lerpf(deg_to_rad(-8.0), deg_to_rad(-32.0), dip)
+				var r0 = lerpf(deg_to_rad(-10.0), deg_to_rad(-26.0), dip)
+				var r1 = lerpf(deg_to_rad(-16.0), deg_to_rad(-38.0), dip)
 				if bones[0] >= 0: right_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
 				if bones[1] >= 0: right_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
 			elif bones.size() == 3:
-				var r0 = lerpf(deg_to_rad(-8.0), deg_to_rad(-30.0), dip)
-				var r1 = lerpf(deg_to_rad(-12.0), deg_to_rad(-45.0), dip)
-				var r2 = lerpf(deg_to_rad(-6.0), deg_to_rad(-24.0), dip)
+				var r0 = lerpf(deg_to_rad(-12.0), deg_to_rad(-28.0), dip)
+				var r1 = lerpf(deg_to_rad(-22.0), deg_to_rad(-45.0), dip)
+				var r2 = lerpf(deg_to_rad(-14.0), deg_to_rad(-24.0), dip)
 				if bones[0] >= 0: right_hand_skel.set_bone_pose_rotation(bones[0], Quaternion(Vector3.RIGHT, r0))
 				if bones[1] >= 0: right_hand_skel.set_bone_pose_rotation(bones[1], Quaternion(Vector3.RIGHT, r1))
 				if bones[2] >= 0: right_hand_skel.set_bone_pose_rotation(bones[2], Quaternion(Vector3.RIGHT, r2))
