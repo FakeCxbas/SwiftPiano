@@ -23,6 +23,7 @@ var horizontal_bounds: Vector2 = Vector2.ZERO
 
 var key_glow_layer: Node2D
 var gaussian_tex: ImageTexture
+var beam_tex: ImageTexture
 
 func set_key_range_mode(mode: String) -> void:
 	match mode:
@@ -49,6 +50,17 @@ static func _generate_gaussian_texture(size_px: int = 128) -> ImageTexture:
 			if r2 < 1.0:
 				alpha = exp(-r2 * 5.0)
 				alpha *= clampf((1.0 - sqrt(r2)) / 0.25, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	return ImageTexture.create_from_image(img)
+
+# Cached analytic light falloff: soft across the key, fading toward its foot.
+static func _generate_beam_texture() -> ImageTexture:
+	var img: Image = Image.create(64, 128, false, Image.FORMAT_RGBA8)
+	for y in range(128):
+		var depth: float = float(y) / 127.0
+		for x in range(64):
+			var lateral: float = absf(float(x) / 63.0 * 2.0 - 1.0)
+			var alpha: float = exp(-lateral * lateral * 5.0) * (1.0 - smoothstep(0.0, 1.0, lateral)) * pow(1.0 - depth, 1.5)
 			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
 	return ImageTexture.create_from_image(img)
 
@@ -95,6 +107,7 @@ func _process(delta: float) -> void:
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gaussian_tex = _generate_gaussian_texture(128)
+	beam_tex = _generate_beam_texture()
 	
 	key_glow_layer = Node2D.new()
 	var add_mat = CanvasItemMaterial.new()
@@ -423,6 +436,15 @@ func _draw_key_glows() -> void:
 		var center_x = rect.position.x + rect.size.x * 0.5
 		var top_y = rect.position.y
 		
+		if beam_tex != null:
+			var beam_color: Color = tint
+			beam_color.a = 0.65 * light * k_scale
+			key_glow_layer.draw_texture_rect(beam_tex, rect, false, beam_color)
+			var core_rect: Rect2 = Rect2(center_x - rect.size.x * 0.12, top_y, rect.size.x * 0.24, rect.size.y)
+			var core_color: Color = tint.lerp(Color.WHITE, 0.55)
+			core_color.a = 0.30 * light * k_scale
+			key_glow_layer.draw_texture_rect(beam_tex, core_rect, false, core_color)
+
 		# 1. Broad soft diffuse outer halo (width 2.8x, height 1.6x of key width)
 		# Merges neighboring active keys into a single continuous cloud of light without square corners
 		var halo_w = rect.size.x * 2.8
