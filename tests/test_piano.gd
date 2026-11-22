@@ -46,8 +46,25 @@ func _run() -> void:
 	check(is_equal_approx(app.keyboard.left_hand_target_x, left_center_59), "MIDI 59 belongs to left hand")
 	check(is_equal_approx(app.keyboard.right_hand_target_x, right_center_60), "MIDI 60 belongs to right hand")
 	check(is_equal_approx(app.keyboard.left_hand_dip, 4.5) and is_equal_approx(app.keyboard.right_hand_dip, 4.5), "Pressing notes dips both hands by 4.5")
+	check(app.keyboard.left_finger_dips.size() == 5 and app.keyboard.right_finger_dips.size() == 5, "5 articulated fingers tracked per hand")
+	var left_has_dip: bool = false
+	var right_has_dip: bool = false
+	for i in range(5):
+		if app.keyboard.left_finger_dips[i] > 0.5:
+			left_has_dip = true
+		if app.keyboard.right_finger_dips[i] > 0.5:
+			right_has_dip = true
+	check(left_has_dip and right_has_dip, "Individual fingers dip upon striking keys")
 	app._release_source("hands-boundary")
 	app.keyboard._process(0.0)
+	var left_all_rest: bool = true
+	var right_all_rest: bool = true
+	for i in range(5):
+		if app.keyboard.left_finger_dips[i] > 0.01:
+			left_all_rest = false
+		if app.keyboard.right_finger_dips[i] > 0.01:
+			right_all_rest = false
+	check(left_all_rest and right_all_rest, "Articulated fingers return to rest position upon note release")
 	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Released hands return over MIDI 48 and 72")
 	app._press_source("hands-chord", [48, 52, 55, 61, 64, 67])
 	app.keyboard._process(0.0)
