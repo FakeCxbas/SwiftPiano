@@ -71,6 +71,9 @@ var playback_active: bool = false
 var playback_delays: Array = []
 var playback_current_delay: float = 0.0
 var playback_transposition: int = 0
+# Played previews keep their fixed length while travelling through the contact plane.
+var _cascade_notes: Array[Dictionary] = []
+var _cascade_onset_received: bool = false
 var halo: Node2D
 var gaussian_tex: ImageTexture
 
@@ -653,12 +656,47 @@ func _draw_halos() -> void:
 
 # Playback uses the next step index, matching Main's bot transport.
 func set_playback_context(steps: Array, current_index: int, step_progress: float, bpm: float, is_active: bool) -> void:
+	var next_index: int = clampi(current_index, 0, steps.size())
+	var next_progress: float = clampf(step_progress, 0.0, 1.0)
+	var same_song: bool = is_same(playback_steps, steps)
+	if not same_song or steps.is_empty() or not is_active:
+		_cascade_notes.clear()
+	elif playback_active and is_active and next_index != playback_index:
+		# Main exposes the next step. Only an observed advance creates a tail;
+		# attaching a context in the middle of a song must not invent past notes.
+		if not _cascade_onset_received:
+			var interval: float = playback_current_delay if playback_current_delay > 0.0 else _preview_delay(playback_index)
+			var start_time: float = elapsed - next_progress * interval
+			var end_index: int = next_index if next_index > playback_index else steps.size()
+			for index: int in range(playback_index, end_index):
+				for note: Dictionary in _step_preview_notes(index, 0.0):
+					_cascade_notes.append({"midi": note.midi, "melody": note.melody, "born": start_time, "duration": _preview_delay(index)})
+				start_time -= _preview_delay(index)
 	playback_steps = steps
-	playback_index = clampi(current_index, 0, maxi(0, steps.size() - 1))
-	playback_progress = clampf(step_progress, 0.0, 1.0)
+	playback_index = next_index
+	playback_progress = next_progress
 	playback_bpm = maxf(1.0, bpm)
 	playback_active = is_active and not steps.is_empty()
+	_cascade_onset_received = false
 	_refresh_perspective()
+
+# Called by the transport at the actual onset, including first/final/single-step loops.
+func record_playback_step(step: Dictionary, duration: float, transposition: int = 0) -> void:
+	var pitches: Array[int] = []
+	var notes: Variant = step.get("notes", [])
+	if not notes is Array:
+		return
+	for value: Variant in notes:
+		if value is int or value is float:
+			var midi: int = int(value) + transposition
+			if midi >= 21 and midi <= 108:
+				pitches.append(midi)
+	var highest: int = -1
+	for midi: int in pitches:
+		highest = maxi(highest, midi)
+	for midi: int in pitches:
+		_cascade_notes.append({"midi": midi, "melody": midi == highest and midi >= 60, "born": elapsed, "duration": maxf(0.0, duration)})
+	_cascade_onset_received = true
 
 func set_playback_timing(delays: Array, current_delay: float, user_transposition: int = 0) -> void:
 	playback_delays = delays
@@ -674,6 +712,8 @@ func _refresh_perspective() -> void:
 
 # This affine horizontal projection is identity on the keyboard contact plane.
 func project_point(point: Vector2) -> Vector2:
+	if point.y > size.y:
+		return point
 	var depth: float = clampf(1.0 - point.y / maxf(1.0, size.y), 0.0, 1.0)
 	var taper: float = lerpf(1.0, clampf(taper_ratio, 0.05, 1.0), depth)
 	var center: float = size.x * 0.5
@@ -699,37 +739,79 @@ func _preview_delay(index: int) -> float:
 		return clampf(float(playback_delays[index]) * 120.0 / playback_bpm, 0.03, 4.0)
 	return clampf(30.0 / playback_bpm, 0.04, 2.0)
 
-func upcoming_notes() -> Array[Dictionary]:
+func _step_preview_notes(index: int, until: float) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if index < 0 or index >= playback_steps.size():
+		return result
+	var step: Variant = playback_steps[index]
+	if not step is Dictionary or not step.get("notes", []) is Array:
+		return result
+	var notes: Array = step.get("notes", [])
+	var transpose: int = int(step.get("transposition", 0)) if step.get("transposition") != null else 0
+	var pitches: Array[int] = []
+	for note: Variant in notes:
+		if note is int or note is float:
+			var midi: int = int(note) + transpose + playback_transposition
+			if midi >= 21 and midi <= 108 and key_rects.has(midi):
+				pitches.append(midi)
+	var highest: int = -1
+	for midi: int in pitches:
+		highest = maxi(highest, midi)
+	for midi: int in pitches:
+		var key: Rect2 = key_rects[midi]
+		var height: float = maxf(18.0, _preview_delay(index) * SPEED)
+		var bottom: float = size.y - until * SPEED
+		result.append({"midi": midi, "melody": midi == highest and midi >= 60, "rect": Rect2(key.position.x, bottom - height, key.size.x, height), "until": until})
+	return result
+
+func _future_notes(lookahead_sec: float) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not playback_active or size.y <= 0.0:
 		return result
 	var interval: float = playback_current_delay if playback_current_delay > 0.0 else _preview_delay(playback_index - 1)
 	var until: float = interval * (1.0 - playback_progress)
 	for index: int in range(playback_index, mini(playback_steps.size(), playback_index + 128)):
-		if until * SPEED > size.y + 80.0:
+		if until > lookahead_sec:
 			break
-		var step: Variant = playback_steps[index]
-		var duration: float = _preview_delay(index)
-		if step is Dictionary and step.get("notes", []) is Array:
-			var notes: Array = step.get("notes", [])
-			var transpose: int = int(step.get("transposition", 0)) if step.get("transposition") != null else 0
-			var highest: int = -1
-			for note: Variant in notes:
-				if note is int or note is float:
-					var candidate: int = int(note) + transpose + playback_transposition
-					if candidate >= 21 and candidate <= 108 and key_rects.has(candidate):
-						highest = maxi(highest, candidate)
-			for note: Variant in notes:
-				if not (note is int or note is float):
-					continue
-				var midi: int = int(note) + transpose + playback_transposition
-				if midi < 21 or midi > 108 or not key_rects.has(midi):
-					continue
-				var key: Rect2 = key_rects[midi]
-				var height: float = maxf(18.0, duration * SPEED * 0.78)
-				var bottom: float = size.y - until * SPEED
-				result.append({"midi": midi, "melody": midi == highest and midi >= 60, "rect": Rect2(key.position.x, bottom - height, key.size.x, height)})
-		until += duration
+		result.append_array(_step_preview_notes(index, until))
+		until += _preview_delay(index)
+	return result
+
+func _sounding_cascade_notes() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for index: int in range(_cascade_notes.size() - 1, -1, -1):
+		var note: Dictionary = _cascade_notes[index]
+		var age: float = maxf(0.0, elapsed - float(note.born))
+		var height: float = maxf(18.0, float(note.duration) * SPEED)
+		if age * SPEED >= height:
+			_cascade_notes.remove_at(index)
+			continue
+		if not key_rects.has(note.midi):
+			continue
+		var key: Rect2 = key_rects[note.midi]
+		var bottom: float = size.y + age * SPEED
+		result.append({"midi": note.midi, "melody": note.melody, "rect": Rect2(key.position.x, bottom - height, key.size.x, height)})
+	return result
+
+func upcoming_notes() -> Array[Dictionary]:
+	if not playback_active or size.y <= 0.0:
+		return []
+	var result: Array[Dictionary] = _future_notes((size.y + 80.0) / SPEED)
+	result.append_array(_sounding_cascade_notes())
+	return result
+
+func get_upcoming_note_centroids(lookahead_sec: float = 0.40) -> Dictionary:
+	var result: Dictionary = {"left": 0.0, "right": 0.0, "has_left": false, "has_right": false}
+	var counts: Dictionary = {"left": 0, "right": 0}
+	for note: Dictionary in _future_notes(maxf(0.0, lookahead_sec)):
+		var hand: String = "left" if int(note.midi) < 60 else "right"
+		var key: Rect2 = key_rects[note.midi]
+		result[hand] += key.get_center().x
+		counts[hand] += 1
+	for hand: String in ["left", "right"]:
+		if int(counts[hand]) > 0:
+			result[hand] /= float(counts[hand])
+			result["has_" + hand] = true
 	return result
 
 func _draw_perspective() -> void:
@@ -742,10 +824,10 @@ func _draw_perspective() -> void:
 	if playback_active:
 		for note: Dictionary in upcoming_notes():
 			_draw_perspective_pill(note.rect, int(note.midi), melody_color if note.melody else Color(0.88, 0.87, 0.81, 0.70), bool(note.melody))
-		# Held notes occupy the contact plane; previews contain only future steps.
-		for bar: Dictionary in bars.values():
-			if key_rects.has(bar.midi):
-				_draw_perspective_pill(bar_rect(bar), int(bar.midi), bar.color if int(bar.midi) >= 60 else Color(0.88, 0.87, 0.81, 0.70), int(bar.midi) >= 60)
+
+	elif not _cascade_notes.is_empty():
+		for note: Dictionary in _sounding_cascade_notes():
+			_draw_perspective_pill(note.rect, int(note.midi), melody_color if note.melody else Color(0.88, 0.87, 0.81, 0.70), bool(note.melody))
 	else:
 		for bar: Dictionary in _visible_bars():
 			if key_rects.has(bar.midi):

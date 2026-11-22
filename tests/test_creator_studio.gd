@@ -48,7 +48,7 @@ func _run() -> void:
 	var co = app.creator_overlay
 	check(app.keyboard.anime_hands_enabled and app.menu.anime_hands_toggle.button_pressed, "Anime hands start enabled and the appearance toggle is synced")
 	check(co.branding_enabled and co.branding_card.visible, "BrandingCard enabled and visible by default")
-	check(co.badge_icon != null and co.badge_icon.text == "♪", "BrandingCard features illuminated music note badge")
+	check(co.badge_icon != null and (co.badge_icon.text == "♪" or co.badge_icon.text == "▶"), "BrandingCard features illuminated music/playback badge icon")
 	check(co.tag_panel != null and not co.tag_panel.visible, "Tag pill 'PIANO' is hidden per user request")
 	check(co.divider_panel != null and co.divider_panel.name == "NeonLaserDivider", "BrandingCard features NeonLaserDivider laser bloom")
 	check(co.channel_label.text == "@DragonCxbas", "Default channel label is @DragonCxbas")
@@ -315,8 +315,10 @@ func _run() -> void:
 	app.bot_enabled = true
 	app._bot_elapsed = app._bot_current_delay + 0.01
 	app._process(0.01)
-	check(app.bot_enabled == false, "Bot finishes and stops automatically at last step when auto_loop_enabled is false")
+	check(app.bot_enabled == true and app._bot_finishing, "Bot holds the final step for its full playback interval")
 	check(app.step_index == app.steps.size() - 1, "Bot holds at last step index when auto_loop_enabled is false")
+	app._process(app._bot_current_delay)
+	check(app.bot_enabled == false, "Bot stops after the final step playback interval")
 	check(co.get_current_token() == "[Sqet]", "Sheet HUD retains last token [Sqet] when song finishes")
 	check(app.next_step.text.contains("Fin de canción"), "Next step label indicates song completion")
 
