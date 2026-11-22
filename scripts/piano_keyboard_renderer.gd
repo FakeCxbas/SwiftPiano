@@ -23,13 +23,20 @@ var horizontal_bounds: Vector2 = Vector2.ZERO
 
 var hand_left_tex: Texture2D = preload("res://assets/hands/hand_left.png")
 var hand_right_tex: Texture2D = preload("res://assets/hands/hand_right.png")
+var hand_shader: Shader = preload("res://shaders/hand_articulation.gdshader")
+
 var anime_hands_enabled: bool = true:
 	set(enabled):
 		anime_hands_enabled = enabled
 		if not enabled:
 			left_hand_dip = 0.0
 			right_hand_dip = 0.0
+			for i in range(5):
+				left_finger_dips[i] = 0.0
+				right_finger_dips[i] = 0.0
+		_sync_hand_mesh_visibility()
 		queue_redraw()
+
 var left_hand_x: float = 0.0
 var right_hand_x: float = 0.0
 var left_hand_dip: float = 0.0
@@ -41,6 +48,26 @@ var right_hand_rot: float = 0.0
 var hand_anticipation_left_x: float = -1.0
 var hand_anticipation_right_x: float = -1.0
 var elapsed_hands: float = 0.0
+var hand_width: float = 120.0
+var hand_size: Vector2 = Vector2(120.0, 180.0)
+
+var left_finger_dips: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+var right_finger_dips: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+var left_finger_targets: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+var right_finger_targets: PackedFloat32Array = PackedFloat32Array([0.0, 0.0, 0.0, 0.0, 0.0])
+
+const LEFT_FINGER_UV_CENTERS = [0.071, 0.285, 0.445, 0.640, 0.943]
+const RIGHT_FINGER_UV_CENTERS = [0.053, 0.356, 0.551, 0.712, 0.925]
+
+var hand_grid_mesh: ArrayMesh
+var left_hand_mesh_node: MeshInstance2D
+var right_hand_mesh_node: MeshInstance2D
+var left_hand_shadow_node: MeshInstance2D
+var right_hand_shadow_node: MeshInstance2D
+var left_hand_mat: ShaderMaterial
+var right_hand_mat: ShaderMaterial
+var left_hand_shadow_mat: ShaderMaterial
+var right_hand_shadow_mat: ShaderMaterial
 
 var key_glow_layer: Node2D
 var gaussian_tex: ImageTexture
@@ -125,6 +152,7 @@ func _process(delta: float) -> void:
 				
 	if anime_hands_enabled:
 		_update_hand_targets()
+		_update_finger_targets()
 		var weight: float = clampf(delta * 12.0, 0.0, 1.0)
 		left_hand_x = lerpf(left_hand_x, left_hand_target_x, weight)
 		right_hand_x = lerpf(right_hand_x, right_hand_target_x, weight)
@@ -132,9 +160,168 @@ func _process(delta: float) -> void:
 		right_hand_rot = lerpf(right_hand_rot, clampf((right_hand_target_x - right_hand_x) * 0.002, -0.06, 0.06), minf(delta * 8.0, 1.0))
 		left_hand_dip = move_toward(left_hand_dip, 0.0, delta * 24.0)
 		right_hand_dip = move_toward(right_hand_dip, 0.0, delta * 24.0)
+		
+		for i in range(5):
+			if is_zero_approx(delta):
+				left_finger_dips[i] = left_finger_targets[i]
+				right_finger_dips[i] = right_finger_targets[i]
+			else:
+				var l_spd: float = 34.0 if left_finger_targets[i] > 0.5 else 18.0
+				left_finger_dips[i] = move_toward(left_finger_dips[i], left_finger_targets[i], delta * l_spd)
+				var r_spd: float = 34.0 if right_finger_targets[i] > 0.5 else 18.0
+				right_finger_dips[i] = move_toward(right_finger_dips[i], right_finger_targets[i], delta * r_spd)
+		
+		_sync_hand_mesh_transforms()
 		queue_redraw()
 	if changed:
 		_request_render()
+
+static func _create_hand_mesh(cols: int = 24, rows: int = 20) -> ArrayMesh:
+	var mesh = ArrayMesh.new()
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	var verts = PackedVector2Array()
+	var uvs = PackedVector2Array()
+	var indices = PackedInt32Array()
+	for r in range(rows + 1):
+		var v = float(r) / float(rows)
+		for c in range(cols + 1):
+			var u = float(c) / float(cols)
+			verts.append(Vector2(u - 0.5, v - 0.72))
+			uvs.append(Vector2(u, v))
+	for r in range(rows):
+		for c in range(cols):
+			var p0 = r * (cols + 1) + c
+			var p1 = p0 + 1
+			var p2 = (r + 1) * (cols + 1) + c
+			var p3 = p2 + 1
+			indices.append(p0)
+			indices.append(p1)
+			indices.append(p2)
+			indices.append(p1)
+			indices.append(p3)
+			indices.append(p2)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+func _setup_anime_hand_nodes() -> void:
+	if hand_grid_mesh == null:
+		hand_grid_mesh = _create_hand_mesh(24, 20)
+	
+	if hand_shader == null:
+		return
+		
+	left_hand_shadow_mat = ShaderMaterial.new()
+	left_hand_shadow_mat.shader = hand_shader
+	left_hand_shadow_mat.set_shader_parameter("u_is_shadow", true)
+	left_hand_shadow_mat.set_shader_parameter("u_finger_centers_1_4", Vector4(LEFT_FINGER_UV_CENTERS[0], LEFT_FINGER_UV_CENTERS[1], LEFT_FINGER_UV_CENTERS[2], LEFT_FINGER_UV_CENTERS[3]))
+	left_hand_shadow_mat.set_shader_parameter("u_finger_center_5", LEFT_FINGER_UV_CENTERS[4])
+	
+	left_hand_shadow_node = MeshInstance2D.new()
+	left_hand_shadow_node.mesh = hand_grid_mesh
+	left_hand_shadow_node.texture = hand_left_tex
+	left_hand_shadow_node.material = left_hand_shadow_mat
+	left_hand_shadow_node.z_index = 8
+	add_child(left_hand_shadow_node)
+	
+	left_hand_mat = ShaderMaterial.new()
+	left_hand_mat.shader = hand_shader
+	left_hand_mat.set_shader_parameter("u_is_shadow", false)
+	left_hand_mat.set_shader_parameter("u_finger_centers_1_4", Vector4(LEFT_FINGER_UV_CENTERS[0], LEFT_FINGER_UV_CENTERS[1], LEFT_FINGER_UV_CENTERS[2], LEFT_FINGER_UV_CENTERS[3]))
+	left_hand_mat.set_shader_parameter("u_finger_center_5", LEFT_FINGER_UV_CENTERS[4])
+	
+	left_hand_mesh_node = MeshInstance2D.new()
+	left_hand_mesh_node.mesh = hand_grid_mesh
+	left_hand_mesh_node.texture = hand_left_tex
+	left_hand_mesh_node.material = left_hand_mat
+	left_hand_mesh_node.z_index = 9
+	add_child(left_hand_mesh_node)
+	
+	right_hand_shadow_mat = ShaderMaterial.new()
+	right_hand_shadow_mat.shader = hand_shader
+	right_hand_shadow_mat.set_shader_parameter("u_is_shadow", true)
+	right_hand_shadow_mat.set_shader_parameter("u_finger_centers_1_4", Vector4(RIGHT_FINGER_UV_CENTERS[0], RIGHT_FINGER_UV_CENTERS[1], RIGHT_FINGER_UV_CENTERS[2], RIGHT_FINGER_UV_CENTERS[3]))
+	right_hand_shadow_mat.set_shader_parameter("u_finger_center_5", RIGHT_FINGER_UV_CENTERS[4])
+	
+	right_hand_shadow_node = MeshInstance2D.new()
+	right_hand_shadow_node.mesh = hand_grid_mesh
+	right_hand_shadow_node.texture = hand_right_tex
+	right_hand_shadow_node.material = right_hand_shadow_mat
+	right_hand_shadow_node.z_index = 8
+	add_child(right_hand_shadow_node)
+	
+	right_hand_mat = ShaderMaterial.new()
+	right_hand_mat.shader = hand_shader
+	right_hand_mat.set_shader_parameter("u_is_shadow", false)
+	right_hand_mat.set_shader_parameter("u_finger_centers_1_4", Vector4(RIGHT_FINGER_UV_CENTERS[0], RIGHT_FINGER_UV_CENTERS[1], RIGHT_FINGER_UV_CENTERS[2], RIGHT_FINGER_UV_CENTERS[3]))
+	right_hand_mat.set_shader_parameter("u_finger_center_5", RIGHT_FINGER_UV_CENTERS[4])
+	
+	right_hand_mesh_node = MeshInstance2D.new()
+	right_hand_mesh_node.mesh = hand_grid_mesh
+	right_hand_mesh_node.texture = hand_right_tex
+	right_hand_mesh_node.material = right_hand_mat
+	right_hand_mesh_node.z_index = 9
+	add_child(right_hand_mesh_node)
+	
+	_sync_hand_mesh_visibility()
+
+func _sync_hand_mesh_visibility() -> void:
+	if left_hand_mesh_node != null:
+		left_hand_mesh_node.visible = anime_hands_enabled
+	if right_hand_mesh_node != null:
+		right_hand_mesh_node.visible = anime_hands_enabled
+	if left_hand_shadow_node != null:
+		left_hand_shadow_node.visible = anime_hands_enabled
+	if right_hand_shadow_node != null:
+		right_hand_shadow_node.visible = anime_hands_enabled
+
+func _sync_hand_mesh_transforms() -> void:
+	if left_hand_mesh_node == null or right_hand_mesh_node == null:
+		return
+	var is_visible: bool = anime_hands_enabled
+	_sync_hand_mesh_visibility()
+	if not is_visible:
+		return
+	
+	var idle_y: float = sin(elapsed_hands * 2.2) * 1.5 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
+	var pivot_y: float = size.y * 0.15 + hand_size.y * 0.72 + idle_y
+	
+	var l_pos = Vector2(left_hand_x, pivot_y + left_hand_dip)
+	left_hand_mesh_node.position = l_pos
+	left_hand_mesh_node.rotation = left_hand_rot
+	left_hand_mesh_node.scale = hand_size
+	if left_hand_shadow_node != null:
+		left_hand_shadow_node.position = l_pos + Vector2(2.0, 3.0)
+		left_hand_shadow_node.rotation = left_hand_rot
+		left_hand_shadow_node.scale = hand_size
+	
+	left_hand_mat.set_shader_parameter("u_finger_dips_1_4", Vector4(left_finger_dips[0], left_finger_dips[1], left_finger_dips[2], left_finger_dips[3]))
+	left_hand_mat.set_shader_parameter("u_finger_dip_5", left_finger_dips[4])
+	left_hand_mat.set_shader_parameter("u_time", elapsed_hands)
+	if left_hand_shadow_mat != null:
+		left_hand_shadow_mat.set_shader_parameter("u_finger_dips_1_4", Vector4(left_finger_dips[0], left_finger_dips[1], left_finger_dips[2], left_finger_dips[3]))
+		left_hand_shadow_mat.set_shader_parameter("u_finger_dip_5", left_finger_dips[4])
+		left_hand_shadow_mat.set_shader_parameter("u_time", elapsed_hands)
+	
+	var r_pos = Vector2(right_hand_x, pivot_y + right_hand_dip)
+	right_hand_mesh_node.position = r_pos
+	right_hand_mesh_node.rotation = right_hand_rot
+	right_hand_mesh_node.scale = hand_size
+	if right_hand_shadow_node != null:
+		right_hand_shadow_node.position = r_pos + Vector2(2.0, 3.0)
+		right_hand_shadow_node.rotation = right_hand_rot
+		right_hand_shadow_node.scale = hand_size
+		
+	right_hand_mat.set_shader_parameter("u_finger_dips_1_4", Vector4(right_finger_dips[0], right_finger_dips[1], right_finger_dips[2], right_finger_dips[3]))
+	right_hand_mat.set_shader_parameter("u_finger_dip_5", right_finger_dips[4])
+	right_hand_mat.set_shader_parameter("u_time", elapsed_hands)
+	if right_hand_shadow_mat != null:
+		right_hand_shadow_mat.set_shader_parameter("u_finger_dips_1_4", Vector4(right_finger_dips[0], right_finger_dips[1], right_finger_dips[2], right_finger_dips[3]))
+		right_hand_shadow_mat.set_shader_parameter("u_finger_dip_5", right_finger_dips[4])
+		right_hand_shadow_mat.set_shader_parameter("u_time", elapsed_hands)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -147,6 +334,8 @@ func _ready() -> void:
 	key_glow_layer.material = add_mat
 	key_glow_layer.draw.connect(_draw_key_glows)
 	add_child(key_glow_layer)
+	
+	_setup_anime_hand_nodes()
 	
 	resized.connect(rebuild)
 	rebuild()
@@ -172,10 +361,48 @@ func rebuild() -> void:
 			var next_x = round(span_left + (index + 1) * width)
 			key_rects[midi] = Rect2(x, 4, next_x - x, maxf(1, size.y - 4))
 			index += 1
+	var white_key_width: float = 0.0
+	var white_k_count: int = 0
+	for m: int in key_rects:
+		if not Keymap.is_black(m):
+			white_key_width += key_rects[m].size.x
+			white_k_count += 1
+	if white_k_count > 0 and hand_left_tex != null:
+		hand_width = white_key_width / float(white_k_count) * 4.5
+		hand_size = Vector2(hand_width, hand_width * float(hand_left_tex.get_height()) / float(hand_left_tex.get_width()))
 	_update_hand_targets()
 	left_hand_x = left_hand_target_x
 	right_hand_x = right_hand_target_x
+	_sync_hand_mesh_transforms()
 	_request_render()
+
+func _find_closest_finger(rel_u: float, is_left: bool) -> int:
+	var centers = LEFT_FINGER_UV_CENTERS if is_left else RIGHT_FINGER_UV_CENTERS
+	var closest_idx: int = 0
+	var min_dist: float = 999.0
+	for i in range(5):
+		var d = absf(rel_u - centers[i])
+		if d < min_dist:
+			min_dist = d
+			closest_idx = i
+	return closest_idx
+
+func _update_finger_targets() -> void:
+	for i in range(5):
+		left_finger_targets[i] = 0.0
+		right_finger_targets[i] = 0.0
+	if hand_width <= 0.0:
+		return
+	for midi in active:
+		if not key_rects.has(midi):
+			continue
+		var key_center: float = key_rects[midi].get_center().x
+		if midi < 60:
+			var rel_u: float = clampf((key_center - (left_hand_x - hand_width * 0.5)) / hand_width, 0.0, 1.0)
+			left_finger_targets[_find_closest_finger(rel_u, true)] = 1.0
+		else:
+			var rel_u: float = clampf((key_center - (right_hand_x - hand_width * 0.5)) / hand_width, 0.0, 1.0)
+			right_finger_targets[_find_closest_finger(rel_u, false)] = 1.0
 
 func _hand_centroid(left: bool, rest_midi: int) -> float:
 	var total: float = 0.0
@@ -233,8 +460,20 @@ func press(midi: int, color: Color = active_color) -> void:
 	if anime_hands_enabled:
 		if midi < 60:
 			left_hand_dip = 4.5
+			if key_rects.has(midi) and hand_width > 0.0:
+				var key_center: float = key_rects[midi].get_center().x
+				var rel_u: float = clampf((key_center - (left_hand_x - hand_width * 0.5)) / hand_width, 0.0, 1.0)
+				var f_idx: int = _find_closest_finger(rel_u, true)
+				left_finger_dips[f_idx] = 1.0
+				left_finger_targets[f_idx] = 1.0
 		else:
 			right_hand_dip = 4.5
+			if key_rects.has(midi) and hand_width > 0.0:
+				var key_center: float = key_rects[midi].get_center().x
+				var rel_u: float = clampf((key_center - (right_hand_x - hand_width * 0.5)) / hand_width, 0.0, 1.0)
+				var f_idx: int = _find_closest_finger(rel_u, false)
+				right_finger_dips[f_idx] = 1.0
+				right_finger_targets[f_idx] = 1.0
 	active[midi] = active.get(midi, 0) + 1
 	illumination[midi] = 1.0
 	depression[midi] = maxf(depression.get(midi, 0.0), 0.85)
@@ -481,39 +720,7 @@ func _draw() -> void:
 	# 4. White-hot pure center filament
 	draw_rect(Rect2(0, 0.5, size.x, 0.8), Color(1.0, 1.0, 1.0, 0.25))
 
-	if anime_hands_enabled and hand_left_tex != null and hand_right_tex != null:
-		var white_key_width: float = 0.0
-		var white_count: int = 0
-		for midi: int in key_rects:
-			if not Keymap.is_black(midi):
-				var rect: Rect2 = key_rects[midi]
-				white_key_width += rect.size.x
-				white_count += 1
-		if white_count > 0:
-			var hand_w: float = white_key_width / float(white_count) * 4.5
-			_draw_hand(hand_left_tex, left_hand_x, left_hand_dip, hand_w, left_hand_rot)
-			_draw_hand(hand_right_tex, right_hand_x, right_hand_dip, hand_w, right_hand_rot)
-
-func _draw_hand(texture: Texture2D, center_x: float, dip: float, width: float, rot: float) -> void:
-	var hand_size: Vector2 = Vector2(width, width * texture.get_height() / float(texture.get_width()))
-	var idle_y: float = sin(elapsed_hands * 2.2) * 1.5 if (active.is_empty() and left_hand_dip <= 0.1 and right_hand_dip <= 0.1) else 0.0
-	var pivot: Vector2 = Vector2(width * 0.5, hand_size.y * 0.72)
-	var origin: Vector2 = Vector2(center_x - width * 0.5, size.y * 0.15 + dip + idle_y)
-	# Fade the wrist using vertex alpha, preserving the supplied transparent sprite.
-	for shadow: bool in [true, false]:
-		var offset: Vector2 = Vector2(2.0, 3.0) if shadow else Vector2.ZERO
-		var tint: Color = Color(0.0, 0.0, 0.0, 0.18) if shadow else Color.WHITE
-		for segment: int in range(2):
-			var top: float = 0.0 if segment == 0 else 0.72
-			var bottom: float = 0.72 if segment == 0 else 1.0
-			var uv: PackedVector2Array = PackedVector2Array([Vector2(0, top), Vector2(1, top), Vector2(1, bottom), Vector2(0, bottom)])
-			var points: PackedVector2Array = PackedVector2Array()
-			for point: Vector2 in uv:
-				points.append(origin + offset + pivot + (point * hand_size - pivot).rotated(rot))
-			var bottom_tint: Color = tint
-			if segment == 1:
-				bottom_tint.a = 0.0
-			draw_polygon(points, PackedColorArray([tint, tint, bottom_tint, bottom_tint]), uv, texture)
+	_sync_hand_mesh_transforms()
 
 func _draw_key_glows() -> void:
 	if gaussian_tex == null or illumination.is_empty():
