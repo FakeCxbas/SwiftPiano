@@ -26,6 +26,9 @@ var hand_right_tex: Texture2D = preload("res://assets/hands/hand_right.png")
 var hand_shader: Shader = preload("res://shaders/hand_articulation.gdshader")
 var hand_3d_left_scene: PackedScene = preload("res://assets/hands/hand_3d_left.glb")
 var hand_3d_right_scene: PackedScene = preload("res://assets/hands/hand_3d_right.glb")
+var hand_3d_anime_shader: Shader = preload("res://shaders/hand_3d_anime.gdshader")
+var hand_3d_outline_shader: Shader = preload("res://shaders/hand_3d_outline.gdshader")
+var hand_anime_texture: Texture2D = preload("res://assets/hands/hand_anime_texture.png")
 
 var hands_mode: String = "3d": # "3d", "2d", "off"
 	set(mode):
@@ -372,6 +375,35 @@ func _setup_3d_hands() -> void:
 	right_hand_3d.name = "RightHand3D"
 	hands_3d_viewport.add_child(right_hand_3d)
 	right_hand_skel = right_hand_3d.find_child("Skeleton3D", true, false) as Skeleton3D
+	
+	var _apply_anime_materials = func(hand_node: Node3D) -> void:
+		if hand_node == null:
+			return
+		var model = hand_node.find_child("*Model*", true, false) as MeshInstance3D
+		if model == null:
+			return
+		var outline_mat = ShaderMaterial.new()
+		outline_mat.shader = hand_3d_outline_shader
+		outline_mat.set_shader_parameter("u_outline_width", 0.0016)
+		outline_mat.set_shader_parameter("u_outline_color", Color(0.09, 0.08, 0.13, 1.0))
+		outline_mat.set_shader_parameter("u_wrist_fade_start", -0.015)
+		outline_mat.set_shader_parameter("u_wrist_fade_end", 0.018)
+		
+		var anime_mat = ShaderMaterial.new()
+		anime_mat.shader = hand_3d_anime_shader
+		anime_mat.set_shader_parameter("u_albedo_tex", hand_anime_texture)
+		anime_mat.set_shader_parameter("u_skin_color", Color(0.98, 0.92, 0.88, 1.0))
+		anime_mat.set_shader_parameter("u_shadow_color", Color(0.88, 0.77, 0.72, 1.0))
+		anime_mat.set_shader_parameter("u_nail_color", Color(0.07, 0.06, 0.10, 1.0))
+		anime_mat.set_shader_parameter("u_nail_specular", 0.85)
+		anime_mat.set_shader_parameter("u_wrist_fade_start", -0.015)
+		anime_mat.set_shader_parameter("u_wrist_fade_end", 0.018)
+		anime_mat.next_pass = outline_mat
+		
+		model.material_override = anime_mat
+
+	_apply_anime_materials.call(left_hand_3d)
+	_apply_anime_materials.call(right_hand_3d)
 	
 	var map_bones = func(skel: Skeleton3D, prefixes: Array) -> Array:
 		var res = []
