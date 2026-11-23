@@ -50,6 +50,7 @@ var _bar_shader: Shader
 var _playback_time: float = 0.0
 var _note_cursor: int = 0
 var _hands_enabled: bool = true
+var _anticipation_enabled: bool = true
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -253,6 +254,9 @@ func set_playback_time(seconds: float) -> void:
 		_note_cursor = 0
 	_playback_time = maxf(seconds, 0.0)
 
+func set_anticipation_enabled(enabled: bool) -> void:
+	_anticipation_enabled = enabled
+
 func arrange(viewport_size: Vector2) -> void:
 	size = Vector2(maxf(1.0, viewport_size.x), maxf(1.0, viewport_size.y))
 	if camera == null:
@@ -299,7 +303,7 @@ func _update_hands(delta: float) -> void:
 	var wrists: Array[float] = []
 	for hand: Node3D in _hands:
 		wrists.append(hand.position.x)
-	var plans: Array[FingeringSolver.HandPlan] = fingering_solver.solve(key_map, _pressed, _depth, _notes, _note_cursor, _playback_time, wrists)
+	var plans: Array[FingeringSolver.HandPlan] = fingering_solver.solve(key_map, _pressed, _depth, _notes, _note_cursor, _playback_time, wrists, _anticipation_enabled)
 	for side: int in range(hand_controllers.size()):
 		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time, _strike_serial)
 

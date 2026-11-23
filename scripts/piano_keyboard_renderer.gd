@@ -74,6 +74,8 @@ var left_hand_rot: float = 0.0
 var right_hand_rot: float = 0.0
 var hand_anticipation_left_x: float = -1.0
 var hand_anticipation_right_x: float = -1.0
+var _left_hold_midis: Array[int] = []
+var _right_hold_midis: Array[int] = []
 var elapsed_hands: float = 0.0
 var hand_width: float = 120.0
 var hand_size: Vector2 = Vector2(120.0, 180.0)
@@ -612,16 +614,29 @@ func _update_finger_targets() -> void:
 func _hand_centroid(left: bool, rest_midi: int) -> float:
 	var total: float = 0.0
 	var count: int = 0
+	var held_midis: Array[int] = []
 	for midi: int in active:
 		if (midi < 60) == left and key_rects.has(midi):
 			var rect: Rect2 = key_rects[midi]
 			total += rect.get_center().x
 			count += 1
+			held_midis.append(midi)
 	if count > 0:
+		if left:
+			_left_hold_midis = held_midis
+		else:
+			_right_hold_midis = held_midis
 		return total / float(count)
 	var anticipation: float = hand_anticipation_left_x if left else hand_anticipation_right_x
 	if anticipation > 0.0:
 		return anticipation
+	var last_midis: Array[int] = _left_hold_midis if left else _right_hold_midis
+	for midi: int in last_midis:
+		if key_rects.has(midi):
+			total += key_rects[midi].get_center().x
+			count += 1
+	if count > 0:
+		return total / float(count)
 	var rest: int = clampi(rest_midi, visible_midi_range.x, visible_midi_range.y)
 	var rest_rect: Rect2 = key_rects.get(rest, Rect2())
 	return rest_rect.get_center().x

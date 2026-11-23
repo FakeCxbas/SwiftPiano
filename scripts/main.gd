@@ -169,6 +169,7 @@ func _ready() -> void:
 	stage_3d = Stage3D.new()
 	stage_3d.name = "PianoStage3D"
 	add_child(stage_3d)
+	stage_3d.set_anticipation_enabled(bot_enabled)
 	# Composite controls after the world glow: white keys and UI keep their
 	# exact colors and only the synth bars contribute to bloom.
 	ui_layer = CanvasLayer.new()
@@ -249,6 +250,7 @@ func _process(delta: float) -> void:
 
 	if stage_3d != null and stage_3d.visible:
 		stage_3d.set_playback_time(_get_current_song_time())
+		stage_3d.set_anticipation_enabled(bot_enabled)
 
 	if visualizer != null:
 		visualizer.melody_color = active_color
@@ -256,10 +258,13 @@ func _process(delta: float) -> void:
 		visualizer.set_playback_context(steps, steps.size() if _bot_finishing else step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or auto_enabled)
 
 	if visualizer != null and keyboard != null:
-		var centroids: Dictionary = visualizer.get_upcoming_note_centroids(0.40)
-		var left_x: float = float(centroids.get("left", -1.0)) if centroids.get("has_left", false) else -1.0
-		var right_x: float = float(centroids.get("right", -1.0)) if centroids.get("has_right", false) else -1.0
-		keyboard.set_hand_anticipation(left_x, right_x)
+		if bot_enabled:
+			var centroids: Dictionary = visualizer.get_upcoming_note_centroids(0.40)
+			var left_x: float = float(centroids.get("left", -1.0)) if centroids.get("has_left", false) else -1.0
+			var right_x: float = float(centroids.get("right", -1.0)) if centroids.get("has_right", false) else -1.0
+			keyboard.set_hand_anticipation(left_x, right_x)
+		else:
+			keyboard.set_hand_anticipation(-1.0, -1.0)
 
 func _build_ui() -> void:
 	menu = StudioMenu.new()
@@ -697,6 +702,11 @@ func set_auto_loop_enabled(enabled: bool) -> void:
 func set_bot_enabled(enabled: bool) -> void:
 	var next_state = enabled and not steps.is_empty()
 	if bot_enabled == next_state:
+		if bot_enabled and auto_enabled:
+			auto_enabled = false
+			_refresh()
+		if stage_3d != null:
+			stage_3d.set_anticipation_enabled(bot_enabled)
 		if menu != null:
 			menu.set_creator_bot(bot_enabled, false)
 		return
@@ -704,6 +714,7 @@ func set_bot_enabled(enabled: bool) -> void:
 	_bot_finishing = false
 	_bot_elapsed = 0.0
 	if bot_enabled:
+		auto_enabled = false
 		_bot_completed = false
 		_trigger_bot_step()
 	else:
@@ -714,6 +725,8 @@ func set_bot_enabled(enabled: bool) -> void:
 		_bot_note_released = true
 		if visualizer != null:
 			visualizer.set_playback_context(steps, step_index, 0.0, bot_bpm, false)
+	if stage_3d != null:
+		stage_3d.set_anticipation_enabled(bot_enabled)
 	if menu != null:
 		menu.set_creator_bot(bot_enabled, false)
 	_refresh()
@@ -1004,9 +1017,10 @@ func _load_song(index: int) -> void:
 	_sync_creator_song_title()
 	menu.show_section("sheet")
 	popup.show()
-	set_bot_enabled(true)
+	if stage_3d != null:
+		stage_3d.set_anticipation_enabled(false)
 	if creator_overlay != null:
-		creator_overlay.trigger_toast("Reproduciendo: %s • Clic en ▶ o Ctrl+P para pausar" % song.title)
+		creator_overlay.trigger_toast("Hoja cargada: %s · Activa Auto (+) o Ctrl+P para Bot" % song.title)
 	_refresh()
 
 func _set_appearance(color: Color, use_rainbow: bool, light_setting: Variant = "supernova") -> void:
@@ -1104,6 +1118,8 @@ func _popup_action(action: String) -> void:
 			if bot_enabled:
 				set_bot_enabled(false)
 			auto_enabled = not auto_enabled and not steps.is_empty()
+			if stage_3d != null:
+				stage_3d.set_anticipation_enabled(false)
 		"Paste":
 			if drafts.has(selected_song):
 				drafts.erase(selected_song)
