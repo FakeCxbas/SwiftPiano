@@ -313,6 +313,9 @@ func _sync_hand_mesh_visibility() -> void:
 		
 	if hands_3d_container != null:
 		hands_3d_container.visible = show_3d
+	if key_glow_layer != null:
+		key_glow_layer.visible = draw_2d_keys
+		key_glow_layer.queue_redraw()
 
 func _setup_3d_hands() -> void:
 	if hand_3d_left_scene == null or hand_3d_right_scene == null:
@@ -727,7 +730,6 @@ func _draw() -> void:
 			continue
 		var rect: Rect2 = key_rects[midi]
 		var dep: float = depression.get(midi, 0.0)
-		var light: float = illumination.get(midi, 0.0)
 		
 		# Physical depression travel (sinking lever mechanism)
 		var travel_y = dep * 3.2
@@ -786,21 +788,6 @@ func _draw() -> void:
 		draw_rect(lip_r, c_bot.darkened(0.25 + dep * 0.15))
 		draw_line(Vector2(k_x + 1, k_y + k_h - lip_h), Vector2(k_x + k_w - 1, k_y + k_h - lip_h), Color(0.0, 0.0, 0.0, 0.22 + dep * 0.20), 1.0)
 		
-		# Contact light gradient (Gouraud fade to 45% height)
-		if light > 0.001:
-			var tint: Color = note_colors.get(midi, active_color)
-			var grad_h = k_h * 0.45
-			var c_glow_top = Color(tint.r, tint.g, tint.b, light * 0.60)
-			var c_glow_bot = Color(tint.r, tint.g, tint.b, 0.0)
-			var g_pts = PackedVector2Array([
-				Vector2(k_x + 1, k_y),
-				Vector2(k_x + k_w - 1, k_y),
-				Vector2(k_x + k_w - 1, k_y + grad_h),
-				Vector2(k_x + 1, k_y + grad_h)
-			])
-			var g_cols = PackedColorArray([c_glow_top, c_glow_top, c_glow_bot, c_glow_bot])
-			draw_polygon(g_pts, g_cols)
-		
 		# Labels (animated sinking along with key depression)
 		if qwerty_enabled and labels.has(midi):
 			var text_color = Color("#384c5c") if c_mid.get_luminance() > 0.4 else Color("#f5fbff")
@@ -850,7 +837,6 @@ func _draw() -> void:
 			continue
 		var rect: Rect2 = key_rects[midi]
 		var dep: float = depression.get(midi, 0.0)
-		var light: float = illumination.get(midi, 0.0)
 		
 		# Physical depression travel (black key sinks 3.8px)
 		var travel_y = dep * 3.8
@@ -896,21 +882,6 @@ func _draw() -> void:
 		draw_line(Vector2(k_x + k_w - 0.5, k_y + 1.0), Vector2(k_x + k_w - 0.5, k_y + k_h), Color(0.0, 0.0, 0.0, 0.75), 1.0)
 		draw_line(Vector2(k_x, k_y + k_h), Vector2(k_x + k_w, k_y + k_h), Color(0.0, 0.0, 0.0, 0.95), 1.0)
 		
-		# Contact light gradient (Gouraud fade to 45% height)
-		if light > 0.001:
-			var tint: Color = note_colors.get(midi, active_color)
-			var grad_h = k_h * 0.45
-			var c_glow_top = Color(tint.r, tint.g, tint.b, light * 0.72)
-			var c_glow_bot = Color(tint.r, tint.g, tint.b, 0.0)
-			var g_pts = PackedVector2Array([
-				Vector2(k_x + 1, k_y),
-				Vector2(k_x + k_w - 1, k_y),
-				Vector2(k_x + k_w - 1, k_y + grad_h),
-				Vector2(k_x + 1, k_y + grad_h)
-			])
-			var g_cols = PackedColorArray([c_glow_top, c_glow_top, c_glow_bot, c_glow_bot])
-			draw_polygon(g_pts, g_cols)
-		
 		# Labels (animated sinking along with black key depression)
 		if qwerty_enabled and labels.has(midi):
 			var font_size = clampi(int(k_w - 2), 8, 14)
@@ -946,7 +917,7 @@ func _draw() -> void:
 	_sync_hand_mesh_transforms()
 
 func _draw_key_glows() -> void:
-	if gaussian_tex == null or illumination.is_empty():
+	if not draw_2d_keys or gaussian_tex == null or illumination.is_empty():
 		return
 	
 	# Auto-gain density attenuation across active keyboard keys
@@ -962,30 +933,21 @@ func _draw_key_glows() -> void:
 			continue
 		var rect: Rect2 = key_rects[midi]
 		var tint: Color = note_colors.get(midi, active_color)
-		var center_x = rect.position.x + rect.size.x * 0.5
-		var top_y = rect.position.y
-		
-		if beam_tex != null:
-			var beam_color: Color = tint
-			beam_color.a = 0.65 * light * k_scale
-			key_glow_layer.draw_texture_rect(beam_tex, rect, false, beam_color)
-			var core_rect: Rect2 = Rect2(center_x - rect.size.x * 0.12, top_y, rect.size.x * 0.24, rect.size.y)
-			var core_color: Color = tint.lerp(Color.WHITE, 0.55)
-			core_color.a = 0.30 * light * k_scale
-			key_glow_layer.draw_texture_rect(beam_tex, core_rect, false, core_color)
+		var center_x: float = rect.position.x + rect.size.x * 0.5
+		var seg_alpha: float = clampf(0.85 * light * k_scale, 0.0, 1.0)
+		key_glow_layer.draw_rect(Rect2(rect.position.x, -0.5, rect.size.x, 3.0), Color(tint.r, tint.g, tint.b, seg_alpha))
+		var core_col: Color = tint.lerp(Color.WHITE, 0.55)
+		core_col.a = clampf(0.90 * light * k_scale, 0.0, 1.0)
+		key_glow_layer.draw_rect(Rect2(rect.position.x + 1.0, 0.4, maxf(1.0, rect.size.x - 2.0), 1.2), core_col)
 
-		# 1. Broad soft diffuse outer halo (width 2.8x, height 1.6x of key width)
-		# Merges neighboring active keys into a single continuous cloud of light without square corners
-		var halo_w = rect.size.x * 2.8
-		var halo_h = rect.size.x * 1.6
-		var halo_rect = Rect2(center_x - halo_w * 0.5, top_y - halo_h * 0.5, halo_w, halo_h)
-		var halo_alpha = 0.50 * light * k_scale
-		key_glow_layer.draw_texture_rect(gaussian_tex, halo_rect, false, Color(tint.r, tint.g, tint.b, halo_alpha))
+		var halo_w: float = rect.size.x * 2.4
+		var halo_h: float = minf(12.0, rect.size.x * 0.75)
+		var halo_rect: Rect2 = Rect2(center_x - halo_w * 0.5, -halo_h * 0.5, halo_w, halo_h)
+		key_glow_layer.draw_texture_rect(gaussian_tex, halo_rect, false, Color(tint.r, tint.g, tint.b, 0.50 * light * k_scale))
 		
-		# 2. Central HDR Hotspot: smaller ellipse with warm bright white
-		var spot_w = rect.size.x * 1.15
-		var spot_h = rect.size.x * 0.70
-		var spot_rect = Rect2(center_x - spot_w * 0.5, top_y - spot_h * 0.5, spot_w, spot_h)
-		var spot_col = tint.lerp(Color.WHITE, 0.25)
+		var spot_w: float = rect.size.x * 1.1
+		var spot_h: float = minf(6.0, rect.size.x * 0.35)
+		var spot_rect: Rect2 = Rect2(center_x - spot_w * 0.5, -spot_h * 0.5, spot_w, spot_h)
+		var spot_col: Color = tint.lerp(Color.WHITE, 0.35)
 		spot_col.a = 0.75 * light * k_scale
 		key_glow_layer.draw_texture_rect(gaussian_tex, spot_rect, false, spot_col)
