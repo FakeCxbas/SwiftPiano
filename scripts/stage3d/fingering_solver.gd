@@ -19,7 +19,10 @@ class HandPlan extends RefCounted:
 	var anticipating_count: int = 0
 	var fingers: Array[FingerAssignment] = []
 
-const LOOKAHEAD_SEC: float = 0.16
+const LOOKAHEAD_SEC: float = 0.26
+const IDLE_LOOKAHEAD_SEC: float = 0.45
+const WRIST_MIN_X: float = -0.565
+const WRIST_MAX_X: float = 0.565
 const DEFAULT_WRIST_X: Array[float] = [-0.18, 0.18]
 const FINGER_REST_X_LEFT: Array[float] = [0.052, 0.022, 0.0, -0.020, -0.042]
 const FINGER_REST_X_RIGHT: Array[float] = [-0.052, -0.022, 0.0, 0.020, 0.042]
@@ -30,6 +33,7 @@ var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
 func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Array, notes: Array, note_cursor: int, playback_time: float, current_wrist_x: Array[float]) -> Array[HandPlan]:
 	var active: Array[Array] = [[], []]
 	var upcoming: Array[Dictionary] = [{}, {}]
+	var idle_upcoming: Array[Dictionary] = [{}, {}]
 	for midi: int in range(21, 109):
 		var key_index: int = key_map.get_key_index(midi)
 		if key_index >= 0 and key_index < pressed.size() and pressed[key_index] != 0:
@@ -37,7 +41,7 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 	for index: int in range(maxi(note_cursor, 0), notes.size()):
 		var note: Variant = notes[index]
 		var start: float = float(note.start)
-		if start > playback_time + LOOKAHEAD_SEC:
+		if start > playback_time + IDLE_LOOKAHEAD_SEC:
 			break
 		if start <= playback_time:
 			continue
@@ -45,16 +49,19 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		if midi < 21 or midi > 108:
 			continue
 		var side: int = 0 if midi < 60 else 1
-		if active[side].has(midi):
-			continue
-		if not upcoming[side].has(midi) or start < float(upcoming[side][midi]):
-			upcoming[side][midi] = start
+		if not idle_upcoming[side].has(midi) or start < float(idle_upcoming[side][midi]):
+			idle_upcoming[side][midi] = start
+		if start <= playback_time + LOOKAHEAD_SEC and not active[side].has(midi):
+			if not upcoming[side].has(midi) or start < float(upcoming[side][midi]):
+				upcoming[side][midi] = start
+	_rebalance_registers(active, upcoming)
 	var plans: Array[HandPlan] = []
 	for side: int in range(2):
 		var plan: HandPlan = HandPlan.new()
 		plan.side = side
-		plan.wrist_target_x = current_wrist_x[side] if side < current_wrist_x.size() else DEFAULT_WRIST_X[side]
-		plan.wrist_target_x = clampf(plan.wrist_target_x, -0.52, 0.52)
+		var current_x: float = current_wrist_x[side] if side < current_wrist_x.size() else DEFAULT_WRIST_X[side]
+		current_x = clampf(current_x, WRIST_MIN_X, WRIST_MAX_X)
+		plan.wrist_target_x = current_x
 		var centroid: float = 0.0
 		var total_weight: float = 0.0
 		for midi: int in active[side]:
@@ -63,16 +70,25 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		var future_midis: Array = upcoming[side].keys()
 		future_midis.sort()
 		for midi: int in future_midis:
-			centroid += key_map.get_key_rest_position(midi).x * 0.35
-			total_weight += 0.35
+			centroid += key_map.get_key_rest_position(midi).x * 0.45
+			total_weight += 0.45
 		if total_weight > 0.0:
-			plan.wrist_target_x = clampf(centroid / total_weight, -0.52, 0.52)
+			plan.wrist_target_x = clampf(centroid / total_weight, WRIST_MIN_X, WRIST_MAX_X)
+		elif not idle_upcoming[side].is_empty():
+			var idle_centroid: float = 0.0
+			for midi: int in idle_upcoming[side]:
+				idle_centroid += key_map.get_key_rest_position(midi).x
+			idle_centroid /= float(idle_upcoming[side].size())
+			plan.wrist_target_x = clampf(lerpf(current_x, idle_centroid, 0.65), WRIST_MIN_X, WRIST_MAX_X)
 		for finger_index: int in range(5):
 			var assignment: FingerAssignment = FingerAssignment.new()
 			assignment.finger_index = finger_index
 			plan.fingers.append(assignment)
 		var strikes: Dictionary = _assign(key_map, active[side], side, plan.wrist_target_x, {})
 		var anticipations: Dictionary = _assign(key_map, future_midis, side, plan.wrist_target_x, strikes)
+		var offsets: Array[float] = FINGER_REST_X_LEFT if side == 0 else FINGER_REST_X_RIGHT
+		var anchor_sum: float = 0.0
+		var anchor_weight: float = 0.0
 		var next_retention: Dictionary = {}
 		var black_weight: float = 0.0
 		var assigned_weight: float = 0.0
@@ -89,6 +105,8 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.active_count += 1
 			assigned_weight += 1.0
 			black_weight += 1.0 if assignment.is_black else 0.0
+			anchor_sum += key_map.get_key_rest_position(midi).x - offsets[finger] * 0.70
+			anchor_weight += 1.0
 			next_retention[midi] = finger
 		for midi: int in anticipations:
 			var finger: int = int(anticipations[midi])
@@ -101,11 +119,52 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.anticipating_count += 1
 			assigned_weight += 0.5
 			black_weight += 0.5 if assignment.is_black else 0.0
+			anchor_sum += (key_map.get_key_rest_position(midi).x - offsets[finger] * 0.70) * 0.45
+			anchor_weight += 0.45
 			next_retention[midi] = finger
+		if anchor_weight > 0.0:
+			plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
 		plan.black_ratio = black_weight / assigned_weight if assigned_weight > 0.0 else 0.0
 		_last_finger_for_midi[side] = next_retention
 		plans.append(plan)
 	return plans
+
+
+func _rebalance_registers(active: Array[Array], upcoming: Array[Dictionary]) -> void:
+	for busy: int in range(2):
+		var empty_side: int = 1 - busy
+		if not active[empty_side].is_empty() or not upcoming[empty_side].is_empty():
+			continue
+		var combined: Array[int] = []
+		for m: int in active[busy]:
+			if not combined.has(m):
+				combined.append(m)
+		for m: int in upcoming[busy].keys():
+			if not combined.has(m):
+				combined.append(m)
+		if combined.size() < 2:
+			continue
+		combined.sort()
+		var span: int = combined.back() - combined.front()
+		if span <= 14:
+			continue
+		var split_midi: int = int(floor(float(combined.front() + combined.back()) * 0.5))
+		var kept_active: Array = []
+		for m: int in active[busy]:
+			if (busy == 1 and m <= split_midi) or (busy == 0 and m >= split_midi):
+				active[empty_side].append(m)
+			else:
+				kept_active.append(m)
+		active[busy] = kept_active
+		active[empty_side].sort()
+		var moved_up: Array[int] = []
+		for m: int in upcoming[busy].keys():
+			if (busy == 1 and m <= split_midi) or (busy == 0 and m >= split_midi):
+				if not active[empty_side].has(m):
+					upcoming[empty_side][m] = upcoming[busy][m]
+				moved_up.append(m)
+		for m: int in moved_up:
+			upcoming[busy].erase(m)
 
 
 # A five-bit dynamic program maximizes cardinality before minimizing travel.
