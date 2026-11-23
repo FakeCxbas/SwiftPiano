@@ -72,6 +72,66 @@ func _run() -> void:
 	
 	check(stage._depth[60 - 21] < 0.02, "Key 60 returned to rest position")
 
+	# KeyMap3D metrics and pressed transform checks
+	check(stage.key_map != null, "KeyMap3D initialized")
+	check(not stage.key_map.is_black_key(60) and stage.key_map.is_black_key(61), "KeyMap3D differentiates white (60) and black (61) keys")
+	var white_contact: Vector3 = stage.key_map.get_strike_contact_point(60, 0.0, false)
+	var black_contact: Vector3 = stage.key_map.get_strike_contact_point(61, 0.0, false)
+	var white_hover: Vector3 = stage.key_map.get_hover_point(60, false)
+	check(black_contact.y > white_contact.y and black_contact.z < white_contact.z, "Black key contact target sits higher and further back in Z than white key")
+	check(white_hover.y > white_contact.y, "Hover point floats cleanly above strike surface")
+
+	# Camera framing: all 88 keys visible horizontally and anchored in lower band
+	var p_a0: Vector2 = stage.camera.unproject_position(stage._keys[0].global_position)
+	var p_c8: Vector2 = stage.camera.unproject_position(stage._keys[87].global_position)
+	var p_mid: Vector2 = stage.camera.unproject_position(stage._keys[39].global_position)
+	check(p_a0.x >= 0.0 and p_c8.x <= stage.size.x and p_c8.x > p_a0.x, "All 88 keys project cleanly within horizontal viewport bounds")
+	check(p_mid.y > stage.size.y * 0.70 and p_mid.y < stage.size.y, "Keyboard projects in the lower screen band")
+
+	# FingeringSolver active + anticipation lookahead + non-crossing order
+	var future_notes: Array[PianoStage3D.StageNote] = [
+		PianoStage3D.StageNote.new(64, 0.10, 0.3, Color.CYAN),
+		PianoStage3D.StageNote.new(67, 0.10, 0.3, Color.CYAN)
+	]
+	stage.set_notes(future_notes)
+	stage.set_playback_time(0.0)
+	stage.press_key(60, Color.CYAN)
+	var wrist_xs: Array[float] = [-0.18, 0.18]
+	var plans: Array = stage.fingering_solver.solve(stage.key_map, stage._pressed, stage._depth, stage._notes, 0, 0.0, wrist_xs)
+	var r_plan: FingeringSolver.HandPlan = plans[1]
+	check(r_plan.active_count == 1 and r_plan.anticipating_count == 2, "FingeringSolver assigns active notes and upcoming notes within 0.16s window")
+	var used_fingers: Array[int] = []
+	for fa: FingeringSolver.FingerAssignment in r_plan.fingers:
+		if fa.state != FingeringSolver.FingerState.IDLE:
+			used_fingers.append(fa.finger_index)
+	check(used_fingers.size() == 3, "FingeringSolver assigns distinct fingers without colliding")
+	stage.release_all()
+	var empty_notes: Array[PianoStage3D.StageNote] = []
+	stage.set_notes(empty_notes)
+	for _f in range(20):
+		stage._process(0.016)
+
+	# HandIKController: Marker3D targets, 25-bone FK chain integrity, and black-key wrist advance
+	check(stage.hand_controllers.size() == 2 and stage.hand_controllers[1].markers.size() == 5, "HandIKController creates 5 Marker3D nodes per hand")
+	var skel_r: Skeleton3D = stage._skeletons[1]
+	var prox_idx: int = skel_r.find_bone("index-finger-phalanx-proximal")
+	var inter_idx: int = skel_r.find_bone("index-finger-phalanx-intermediate")
+	var tip_idx: int = skel_r.find_bone("index-finger-tip")
+	var rest_seg_len: float = skel_r.get_bone_rest(inter_idx).origin.distance_to(skel_r.get_bone_rest(prox_idx).origin)
+	var rest_wrist_z: float = stage._hands[1].position.z
+	var tip_pose_before: Vector3 = skel_r.get_bone_pose_position(tip_idx)
+	stage.press_key(61, Color.MAGENTA)
+	for _f in range(15):
+		stage._process(0.016)
+	var tip_pose_after: Vector3 = skel_r.get_bone_pose_position(tip_idx)
+	var pose_seg_len: float = skel_r.get_bone_pose_position(inter_idx).distance_to(skel_r.get_bone_pose_position(prox_idx))
+	check(absf(pose_seg_len - rest_seg_len) < 0.001, "25-bone FK preserves rigid phalanx distance without detaching finger segments")
+	check(tip_pose_before.distance_to(tip_pose_after) > 0.002 and skel_r.get_bone_pose_rotation(tip_idx) != skel_r.get_bone_rest(tip_idx).basis.get_rotation_quaternion(), "FK updates both pose position and rotation on distal/tip joints")
+	check(stage._hands[1].position.z < rest_wrist_z - 0.01, "Wrist advances forward in -Z when playing black keys")
+	stage.release_all()
+	for _f in range(25):
+		stage._process(0.016)
+
 	# Test Main scene integration
 	var app = MainScene.instantiate()
 	root.add_child(app)
