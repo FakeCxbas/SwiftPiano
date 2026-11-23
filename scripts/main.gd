@@ -9,6 +9,7 @@ const Keymap = preload("res://scripts/keymap_data.gd")
 const AudioEngine = preload("res://scripts/audio_engine.gd")
 const Visualizer = preload("res://scripts/synth_visualizer.gd")
 const Keyboard = preload("res://scripts/piano_keyboard_renderer.gd")
+const Stage3D = preload("res://scripts/piano_stage_3d.gd")
 const Parser = preload("res://scripts/sheet_parser.gd")
 const MidiImporter = preload("res://scripts/midi_importer.gd")
 const CreatorOverlay = preload("res://scripts/creator_overlay.gd")
@@ -59,9 +60,13 @@ var _bot_elapsed: float = 0.0
 var _bot_current_delay: float = 0.25
 var _bot_note_released: bool = false
 var _bot_finishing: bool = false
+var _bot_current_step: int = -1
+var _bot_completed: bool = false
 var step_delays: Array[float] = []
 var audio: Node
 var visualizer: Control
+var stage_3d: PianoStage3D
+var stage_mode: String = "3d"
 var keyboard: Control
 var panel: Panel
 var ui_layer: CanvasLayer
@@ -161,6 +166,9 @@ func _ready() -> void:
 	add_child(world)
 	visualizer = Visualizer.new()
 	add_child(visualizer)
+	stage_3d = Stage3D.new()
+	stage_3d.name = "PianoStage3D"
+	add_child(stage_3d)
 	# Composite controls after the world glow: white keys and UI keep their
 	# exact colors and only the synth bars contribute to bloom.
 	ui_layer = CanvasLayer.new()
@@ -177,6 +185,7 @@ func _ready() -> void:
 	_layout()
 	_compile_sheet()
 	_refresh()
+	_sync_stage_mode()
 	audio = AudioEngine.new()
 	add_child(audio)
 	_sync_sustain()
@@ -189,6 +198,7 @@ func _ready() -> void:
 		load_user_settings(settings_path)
 	else:
 		_loading_settings = false
+	_sync_stage_mode()
 	get_window().files_dropped.connect(_on_files_dropped)
 	_sync_creator_song_title()
 
@@ -237,6 +247,9 @@ func _process(delta: float) -> void:
 				_bot_elapsed -= _bot_current_delay
 				_trigger_bot_step()
 
+	if stage_3d != null and stage_3d.visible:
+		stage_3d.set_playback_time(_get_current_song_time())
+
 	if visualizer != null:
 		visualizer.melody_color = active_color
 		visualizer.set_playback_timing(step_delays, _bot_current_delay if bot_enabled else _get_step_delay(step_index), user_transposition)
@@ -270,6 +283,7 @@ func _build_ui() -> void:
 	menu.song_requested.connect(_load_song)
 	menu.appearance_changed.connect(_set_appearance)
 	menu.anime_hands_toggled.connect(set_anime_hands_enabled)
+	menu.stage_3d_toggled.connect(func(enabled: bool) -> void: set_stage_mode("3d" if enabled else "2d"))
 	menu.instrument_changed.connect(_change_instrument)
 	menu.bar_style_changed.connect(_change_bar_style)
 	menu.reverb_preset_changed.connect(_change_reverb_preset)
@@ -450,6 +464,7 @@ func _import_midi(path: String, show_dialog: bool = true) -> bool:
 		step_delays.clear()
 		for d in result.delays:
 			step_delays.append(float(d))
+		_sync_stage_3d_notes()
 	user_custom_title = ""
 	menu.song_title.text = path.get_file().get_basename()
 	if menu.song_field != null:
@@ -497,6 +512,8 @@ func _export_sheet(path: String) -> void:
 	midi_notice.popup_centered(Vector2i(480, 160))
 
 func _layout() -> void:
+	if stage_3d != null:
+		stage_3d.arrange(size)
 	if keyboard == null or menu == null:
 		return
 	var top = size.y * 0.8
@@ -627,9 +644,15 @@ func toggle_audio_recording() -> bool:
 	return active
 
 func set_bot_bpm(bpm: float) -> void:
+	var prev_delay: float = _bot_current_delay
 	bot_bpm = clampf(bpm, 30.0, 360.0)
+	if bot_enabled and prev_delay > 0.0 and not steps.is_empty():
+		var active_bpm_step: int = _bot_current_step if (_bot_current_step >= 0 and _bot_current_step < steps.size()) else clampi(step_index, 0, steps.size() - 1)
+		_bot_current_delay = _get_step_delay(active_bpm_step)
+		_bot_elapsed *= _bot_current_delay / prev_delay
 	if menu != null:
 		menu.set_creator_bot_bpm(bot_bpm, false)
+	_sync_stage_3d_notes()
 	save_user_settings()
 
 func _get_step_delay(idx: int) -> float:
@@ -639,10 +662,13 @@ func _get_step_delay(idx: int) -> float:
 
 func _trigger_bot_step() -> void:
 	if _bot_finishing or steps.is_empty():
+		_bot_completed = _bot_finishing and not steps.is_empty()
 		set_bot_enabled(false)
 		return
 	_release_source("bot")
 	var idx = clampi(step_index, 0, steps.size() - 1)
+	_bot_current_step = idx
+	_bot_completed = false
 	var step = steps[idx]
 	var base_t = step.transposition if step.transposition != null else 0
 	transposition = base_t + user_transposition
@@ -678,9 +704,13 @@ func set_bot_enabled(enabled: bool) -> void:
 	_bot_finishing = false
 	_bot_elapsed = 0.0
 	if bot_enabled:
+		_bot_completed = false
 		_trigger_bot_step()
 	else:
+		_bot_current_step = -1
 		_release_source("bot")
+		if stage_3d != null and (keyboard == null or keyboard.active.is_empty()):
+			stage_3d.release_all()
 		_bot_note_released = true
 		if visualizer != null:
 			visualizer.set_playback_context(steps, step_index, 0.0, bot_bpm, false)
@@ -717,13 +747,70 @@ func set_creator_texts(channel: String, subtitle: String) -> void:
 func set_anime_hands_enabled(enabled: bool) -> void:
 	if keyboard != null:
 		keyboard.anime_hands_enabled = enabled
+	if stage_3d != null:
+		stage_3d.set_hands_visible(enabled and (keyboard == null or keyboard.hands_mode != "off"))
 	if menu != null:
 		menu.set_anime_hands_enabled(enabled)
 	save_user_settings()
 
+func set_stage_mode(mode: String) -> void:
+	stage_mode = mode if mode in ["3d", "2d"] else "3d"
+	_sync_stage_mode()
+	save_user_settings()
+
+func _sync_stage_mode() -> void:
+	if stage_mode not in ["3d", "2d"]:
+		stage_mode = "3d"
+	if stage_3d != null:
+		stage_3d.visible = stage_mode == "3d"
+	if visualizer != null:
+		visualizer.visible = stage_mode != "3d"
+	if keyboard != null:
+		keyboard.draw_2d_keys = stage_mode != "3d"
+	if menu != null and menu.has_method("set_stage_3d_enabled"):
+		menu.set_stage_3d_enabled(stage_mode == "3d")
+
+func _get_current_song_time() -> float:
+	if steps.is_empty():
+		return 0.0
+	var active_step: int = step_index
+	if bot_enabled:
+		if _bot_current_step >= 0 and _bot_current_step < steps.size():
+			active_step = _bot_current_step
+		else:
+			active_step = step_index - 1 if not _bot_finishing else step_index
+			if active_step < 0:
+				active_step = steps.size() - 1
+	elif _bot_completed:
+		active_step = steps.size()
+	var song_time: float = 0.0
+	for i: int in range(clampi(active_step, 0, steps.size())):
+		song_time += _get_step_delay(i)
+	return song_time + (_bot_elapsed if bot_enabled else 0.0)
+
+func _sync_stage_3d_notes() -> void:
+	if stage_3d == null:
+		return
+	var notes: Array[PianoStage3D.StageNote] = []
+	var start_time: float = 0.0
+	for i: int in range(steps.size()):
+		var step: Dictionary = steps[i]
+		var delay: float = _get_step_delay(i)
+		var base_transposition: int = int(step.transposition) if step.transposition != null else 0
+		var color: Color = Color.from_hsv(fmod(start_time * 0.08, 1.0), 0.65, 1.0) if rainbow else active_color
+		for midi: Variant in step.notes:
+			var pitch: int = int(midi) + base_transposition + user_transposition
+			if pitch >= 21 and pitch <= 108:
+				notes.append(PianoStage3D.StageNote.new(pitch, start_time, delay * 0.82, color))
+		start_time += delay
+	stage_3d.set_playback_time(_get_current_song_time())
+	stage_3d.set_notes(notes)
+
 func set_hands_mode(mode: String) -> void:
 	if keyboard != null:
 		keyboard.hands_mode = mode
+	if stage_3d != null:
+		stage_3d.set_hands_visible((keyboard == null or keyboard.anime_hands_enabled) and mode != "off")
 	save_user_settings()
 
 func save_user_settings(path: String = settings_path) -> void:
@@ -734,6 +821,7 @@ func save_user_settings(path: String = settings_path) -> void:
 	var cfg = ConfigFile.new()
 	cfg.set_value("appearance", "active_color", "#" + active_color.to_html(false))
 	cfg.set_value("appearance", "rainbow", rainbow)
+	cfg.set_value("appearance", "stage_mode", stage_mode)
 	if keyboard != null:
 		cfg.set_value("appearance", "anime_hands_enabled", keyboard.anime_hands_enabled)
 		cfg.set_value("appearance", "hands_mode", keyboard.hands_mode)
@@ -769,9 +857,9 @@ func load_user_settings(path: String = settings_path) -> bool:
 		_loading_settings = false
 		return false
 	_loading_settings = true
+	set_stage_mode(str(cfg.get_value("appearance", "stage_mode", "3d")))
 	set_anime_hands_enabled(bool(cfg.get_value("appearance", "anime_hands_enabled", true)))
-	if keyboard != null:
-		keyboard.hands_mode = str(cfg.get_value("appearance", "hands_mode", "3d"))
+	set_hands_mode(str(cfg.get_value("appearance", "hands_mode", "3d")))
 	var col_str = str(cfg.get_value("appearance", "active_color", "#" + active_color.to_html(false)))
 	var saved_color = Color.from_string(col_str, active_color)
 	var saved_rainbow = bool(cfg.get_value("appearance", "rainbow", rainbow))
@@ -943,6 +1031,7 @@ func _set_appearance(color: Color, use_rainbow: bool, light_setting: Variant = "
 		menu.update_playback_state(_sustain_active(), auto_enabled, active_color)
 	if creator_overlay != null:
 		creator_overlay.set_active_color(active_color)
+	_sync_stage_3d_notes()
 	save_user_settings()
 
 func _change_instrument(id: String) -> void:
@@ -1043,9 +1132,13 @@ func _popup_action(action: String) -> void:
 	_refresh()
 
 func _reset_auto() -> void:
+	if stage_3d != null:
+		stage_3d.release_all()
 	for source in sources.keys():
 		_release_source(source)
 	step_index = 0
+	_bot_current_step = -1
+	_bot_completed = false
 	var base_t = steps[0].transposition if not steps.is_empty() and steps[0].transposition != null else 0
 	transposition = base_t + user_transposition
 	_refresh_progress()
@@ -1061,6 +1154,7 @@ func set_transposition(value: int) -> void:
 	if creator_overlay != null:
 		creator_overlay.trigger_toast(msg)
 	_refresh_progress()
+	_sync_stage_3d_notes()
 
 
 func _compile_sheet() -> void:
@@ -1080,7 +1174,13 @@ func _compile_sheet() -> void:
 		for note in step.notes:
 			names.append(str(labels.get(note, note)))
 		step_labels.append("[" + " ".join(names) + "]" if names.size() > 1 else " ".join(names))
+	for source in sources.keys():
+		_release_source(source)
+	if stage_3d != null:
+		stage_3d.release_all()
 	step_index = 0
+	_bot_current_step = -1
+	_bot_completed = false
 	dirty_sheet = false
 	if steps.is_empty():
 		auto_enabled = false
@@ -1093,6 +1193,7 @@ func _compile_sheet() -> void:
 	if creator_overlay != null:
 		creator_overlay.update_steps(steps, step_index, false)
 	_sync_creator_song_title()
+	_sync_stage_3d_notes()
 
 func _blur() -> void:
 	sheet_text_edit.release_focus()
@@ -1232,6 +1333,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if auto_enabled and Keymap.is_note_key(code):
 		if not steps.is_empty():
+			_bot_completed = false
 			var step = steps[step_index]
 			var base_t = step.transposition if step.transposition != null else 0
 			transposition = base_t + user_transposition
@@ -1271,6 +1373,8 @@ func _press_source(source: Variant, notes: Array, note_velocities: Dictionary = 
 		var color = Color.from_hsv(fmod(Time.get_ticks_msec() * 0.00008, 1.0), 0.65, 1.0) if rainbow else active_color
 		first_color = color
 		keyboard.press(pitch, color)
+		if stage_3d != null:
+			stage_3d.press_key(pitch, color)
 		visualizer.note_on(serial, pitch, color)
 	sources[source] = group
 	if not pitches.is_empty():
@@ -1293,6 +1397,8 @@ func _release_source(source: Variant) -> void:
 	for voice in sources[source]:
 		audio.note_off(voice.token)
 		keyboard.release(voice.midi)
+		if stage_3d != null and (keyboard == null or not keyboard.active.has(voice.midi)):
+			stage_3d.release_key(voice.midi)
 		visualizer.note_off(voice.token)
 	sources.erase(source)
 
@@ -1304,6 +1410,8 @@ func _mouse_note(midi: int) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST and not shutting_down:
 		_shutdown()
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and stage_3d != null:
+		stage_3d.release_all()
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and audio != null:
 		_blur()
 		for source in sources.keys():

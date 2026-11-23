@@ -26,6 +26,7 @@ func _run() -> void:
 	app.size = Vector2(1920, 1080)
 	app._layout()
 	await process_frame
+	app.set_stage_mode("2d")
 	
 	var keyboard = app.keyboard
 	check(keyboard != null, "Keyboard exists")
@@ -67,8 +68,8 @@ func _run() -> void:
 	check(keyboard.right_hand_target_x > 0.0, "Right hand target calculated")
 	
 	# Verify bone rotations applied without error
-	var test_bone_idx = keyboard.left_finger_bones[3][0] # Index proximal
-	var pose_rot = keyboard.left_hand_skel.get_bone_pose_rotation(test_bone_idx)
+	var test_bone_idx: int = keyboard.left_finger_bones[3][0] # Index proximal
+	var pose_rot: Quaternion = keyboard.left_hand_skel.get_bone_pose_rotation(test_bone_idx)
 	check(pose_rot != Quaternion.IDENTITY, "Bone pose rotation applied on key press")
 	
 	app._release_source("test_3d")

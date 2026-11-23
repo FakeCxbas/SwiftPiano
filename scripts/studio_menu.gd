@@ -10,6 +10,8 @@ signal volume_changed(value: float)
 signal song_requested(index: int)
 signal anime_hands_toggled(enabled: bool)
 var anime_hands_toggle: CheckButton
+signal stage_3d_toggled(enabled: bool)
+var stage_3d_toggle: CheckButton
 
 signal appearance_changed(color: Color, rainbow: bool, light_mode: Variant)
 signal instrument_changed(id: String)
@@ -673,6 +675,12 @@ func _build_appearance() -> void:
 	anime_hands_toggle.focus_mode = Control.FOCUS_NONE
 	anime_hands_toggle.toggled.connect(func(enabled: bool) -> void: anime_hands_toggled.emit(enabled))
 	box.add_child(anime_hands_toggle)
+	stage_3d_toggle = CheckButton.new()
+	stage_3d_toggle.text = "Escenario 3D"
+	stage_3d_toggle.button_pressed = true
+	stage_3d_toggle.focus_mode = Control.FOCUS_NONE
+	stage_3d_toggle.toggled.connect(func(enabled: bool) -> void: stage_3d_toggled.emit(enabled))
+	box.add_child(stage_3d_toggle)
 	
 	box = _studio_page(tabs, "Efectos")
 	var sep_bar = HSeparator.new()
@@ -1187,6 +1195,10 @@ func set_active_light_mode(id: String) -> void:
 func set_anime_hands_enabled(enabled: bool) -> void:
 	if anime_hands_toggle != null:
 		anime_hands_toggle.set_pressed_no_signal(enabled)
+
+func set_stage_3d_enabled(enabled: bool) -> void:
+	if stage_3d_toggle != null:
+		stage_3d_toggle.set_pressed_no_signal(enabled)
 
 func apply_appearance_state(color: Color, use_rainbow: bool, light_id: String = current_light_mode) -> void:
 	chosen_color = Color(color.r, color.g, color.b, 1.0)
