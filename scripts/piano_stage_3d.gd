@@ -14,7 +14,13 @@ class StageNote extends RefCounted:
 		duration = maxf(length, 0.01)
 		color = tint
 
-const WHITE_STEP: float = 0.0232
+const KeyMap3DClass = preload("res://scripts/stage3d/key_map_3d.gd")
+const FingeringSolverClass = preload("res://scripts/stage3d/fingering_solver.gd")
+const HandIKControllerClass = preload("res://scripts/stage3d/hand_ik_controller.gd")
+const SLOPE: float = 0.08
+const CASCADE_SPAN: float = 1.15
+const STRIKE_Z: float = -0.082
+const STRIKE_Y: float = 0.028
 const MAX_BARS: int = 384
 const LOOKAHEAD: float = 4.0
 const HAND_SCENES: Array[PackedScene] = [preload("res://assets/hands/hand_3d_left.glb"), preload("res://assets/hands/hand_3d_right.glb")]
@@ -32,6 +38,11 @@ var _depth: PackedFloat32Array = PackedFloat32Array()
 var _energy: PackedFloat32Array = PackedFloat32Array()
 var _hands: Array[Node3D] = []
 var _skeletons: Array[Skeleton3D] = []
+var key_map: KeyMap3D = KeyMap3DClass.new()
+var fingering_solver: FingeringSolver = FingeringSolverClass.new()
+var hand_controllers: Array[HandIKController] = []
+var _elapsed_time: float = 0.0
+var _hand_lights: Array[OmniLight3D] = []
 var _notes: Array[StageNote] = []
 var _bars: Array[MeshInstance3D] = []
 var _bar_shader: Shader
@@ -53,8 +64,8 @@ func _ready() -> void:
 	stage_viewport.add_child(world_root)
 	camera = Camera3D.new()
 	camera.name = "StageCamera"
-	camera.position = Vector3(0.0, 0.46, 0.38)
-	camera.rotation_degrees = Vector3(-48.0, 0.0, 0.0)
+	camera.position = Vector3(0.0, 1.65, 0.10)
+	camera.rotation_degrees = Vector3(-79.0, 0.0, 0.0)
 	camera.fov = 50.0
 	camera.near = 0.01
 	camera.far = 10.0
@@ -64,18 +75,35 @@ func _ready() -> void:
 	var environment: Environment = Environment.new()
 	environment.background_mode = Environment.BG_CLEAR_COLOR
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("c7c4e5")
-	environment.ambient_light_energy = 0.3
+	environment.ambient_light_color = Color("181c2b")
+	environment.ambient_light_energy = 0.14
 	environment_node.environment = environment
 	world_root.add_child(environment_node)
 	var light: DirectionalLight3D = DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-55.0, -25.0, 0.0)
-	light.light_energy = 0.25
+	light.rotation_degrees = Vector3(-58.0, -22.0, 0.0)
+	light.light_energy = 0.65
 	world_root.add_child(light)
+	var rim: DirectionalLight3D = DirectionalLight3D.new()
+	rim.name = "HandRimLight"
+	rim.rotation_degrees = Vector3(-135.0, 18.0, 0.0)
+	rim.light_energy = 0.42
+	rim.light_color = Color("b8d2ff")
+	world_root.add_child(rim)
 	_build_keyboard()
 	_build_hands()
-	var cascade: MeshInstance3D = _box("CascadeSurface", Vector3(1.26, 0.004, 1.45 * sqrt(1.1024)), Vector3(0.0, 0.075 + 0.725 * 0.32, -0.875), _material(Color("131420"), 0.6, 0.2))
-	cascade.rotation.x = atan(0.32)
+	for side in range(2):
+		var hand_light: OmniLight3D = OmniLight3D.new()
+		hand_light.name = "LeftKeyLight" if side == 0 else "RightKeyLight"
+		hand_light.position = Vector3(-0.18 if side == 0 else 0.18, 0.14, -0.015)
+		hand_light.omni_range = 0.36
+		hand_light.light_energy = 0.0
+		world_root.add_child(hand_light)
+		_hand_lights.append(hand_light)
+	var cascade: MeshInstance3D = _box("CascadeSurface", Vector3(1.26, 0.004, CASCADE_SPAN * sqrt(1.0 + SLOPE * SLOPE)), Vector3(0.0, STRIKE_Y - 0.006 + CASCADE_SPAN * 0.5 * SLOPE, STRIKE_Z - CASCADE_SPAN * 0.5), _material(Color("131420"), 0.6, 0.2))
+	cascade.rotation.x = atan(SLOPE)
+	for midi in range(24, 109, 12):
+		var guide: MeshInstance3D = _box("OctaveGuide%d" % midi, Vector3(0.0005, 0.0004, CASCADE_SPAN * sqrt(1.0 + SLOPE * SLOPE)), Vector3(_rest[midi - 21].x - KeyMap3D.WHITE_STEP * 0.5, STRIKE_Y - 0.0035 + CASCADE_SPAN * 0.5 * SLOPE, STRIKE_Z - CASCADE_SPAN * 0.5), _material(Color("303342"), 0.8, 0.1))
+		guide.rotation.x = atan(SLOPE)
 	_bar_shader = Shader.new()
 	_bar_shader.code = """shader_type spatial;
 render_mode unshaded, cull_disabled;
@@ -117,30 +145,29 @@ func _box(label: String, dimensions: Vector3, location: Vector3, material: Mater
 	return node
 
 func _is_black(midi: int) -> bool:
-	return midi % 12 in [1, 3, 6, 8, 10]
+	return key_map.is_black_key(midi)
 
 func _build_keyboard() -> void:
 	_pressed.resize(88)
 	_depth.resize(88)
 	_energy.resize(88)
-	var white_index: int = 0
 	for midi in range(21, 109):
 		var black: bool = _is_black(midi)
-		var x: float = (float(white_index) - 25.5 - (0.5 if black else 0.0)) * WHITE_STEP
-		var material: StandardMaterial3D = _material(Color("151419") if black else Color("faf7f2"), 0.35 if black else 0.22, 0.4 if black else 0.6)
+		var material: StandardMaterial3D = _material(Color("171822") if black else Color("f4f1ea"), 0.25 if black else 0.24, 0.68 if black else 0.55)
 		material.emission_enabled = true
 		material.emission_energy_multiplier = 0.0
-		var dimensions: Vector3 = Vector3(0.0125, 0.032, 0.095) if black else Vector3(0.0232, 0.022, 0.150)
-		var location: Vector3 = Vector3(x, 0.027 if black else 0.0, -0.0275 if black else 0.0)
+		var dimensions: Vector3 = key_map.get_key_dimensions(midi)
+		var location: Vector3 = key_map.get_key_rest_position(midi)
 		var key: MeshInstance3D = _box("Key%d" % midi, dimensions, location, material)
 		_keys.append(key)
 		_key_materials.append(material)
 		_rest.append(location)
-		if not black:
-			white_index += 1
-	_box("LacquerChassis", Vector3(1.26, 0.045, 0.26), Vector3(0.0, -0.036, -0.035), _material(Color("100e15"), 0.12, 0.7))
-	_box("Fallboard", Vector3(1.26, 0.10, 0.025), Vector3(0.0, 0.025, -0.155), _material(Color("100e15"), 0.12, 0.7))
-	_box("GoldMolding", Vector3(1.255, 0.003, 0.004), Vector3(0.0, 0.077, -0.139), _material(Color("c5a059"), 0.24, 0.7))
+	_box("LacquerChassis", Vector3(1.28, 0.045, 0.29), Vector3(0.0, -0.036, -0.045), _material(Color("0b0c12"), 0.2, 0.7))
+	var rail_material: StandardMaterial3D = _material(Color("598eaa"), 0.3, 0.55)
+	rail_material.emission_enabled = true
+	rail_material.emission = Color("68bdd9")
+	rail_material.emission_energy_multiplier = 1.2
+	_box("StrikeLineRail", Vector3(1.23, 0.003, 0.003), Vector3(0.0, 0.024, -0.079), rail_material)
 
 func _build_hands() -> void:
 	for side in range(2):
@@ -153,11 +180,14 @@ func _build_hands() -> void:
 		# +90 degrees maps the negative-Y fingers toward the piano's -Z;
 		# original positive-Z palm surface faces down toward the key tops.
 		hand.rotation.x = PI * 0.5
-		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.045, 0.15)
+		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.072, 0.192)
 		hand.visible = _hands_enabled
 		_apply_hand_material(hand)
 		_hands.append(hand)
-		_skeletons.append(hand.find_child("Skeleton3D", true, false) as Skeleton3D)
+		var skeleton: Skeleton3D = hand.find_child("Skeleton3D", true, false) as Skeleton3D
+		_skeletons.append(skeleton)
+		hand_controllers.append(HandIKControllerClass.new(side, hand, skeleton, world_root))
+	_update_hands(1.0)
 
 func _apply_hand_material(node: Node) -> void:
 	if node is MeshInstance3D:
@@ -165,9 +195,12 @@ func _apply_hand_material(node: Node) -> void:
 		var material: ShaderMaterial = ShaderMaterial.new()
 		material.shader = ANIME
 		material.set_shader_parameter("u_albedo_tex", SKIN)
+		material.set_shader_parameter("u_skin_color", Color(0.86, 0.69, 0.58, 1.0))
+		material.set_shader_parameter("u_shadow_color", Color(0.30, 0.21, 0.19, 1.0))
+		material.set_shader_parameter("u_nail_color", Color(0.88, 0.73, 0.67, 1.0))
 		var outline: ShaderMaterial = ShaderMaterial.new()
 		outline.shader = OUTLINE
-		outline.set_shader_parameter("u_outline_width", 0.00065)
+		outline.set_shader_parameter("u_outline_width", 0.00022)
 		material.next_pass = outline
 		mesh.material_override = material
 	for child: Node in node.get_children():
@@ -211,6 +244,28 @@ func set_playback_time(seconds: float) -> void:
 
 func arrange(viewport_size: Vector2) -> void:
 	size = Vector2(maxf(1.0, viewport_size.x), maxf(1.0, viewport_size.y))
+	if camera == null:
+		return
+	var pitch: float = deg_to_rad(-79.0)
+	var aspect: float = maxf(size.x / maxf(size.y, 1.0), 0.01)
+	var c: float = cos(pitch)
+	var s: float = sin(pitch)
+	var dy_front: float = KeyMap3D.WHITE_HEIGHT * 0.5 - 1.65
+	var fov: float = 25.0
+	var z0: float = 0.10
+	# Solve front-edge depth and vertical FOV together, keeping its screen Y at 95%.
+	for _iter in range(4):
+		var tan_h: float = tan(deg_to_rad(fov) * 0.5)
+		var k: float = -0.90 * tan_h
+		var dz: float = (-dy_front * c + k * dy_front * s) / (s + k * c)
+		var depth_front: float = dy_front * s - dz * c
+		z0 = 0.075 - dz
+		var half_width: float = key_map.get_key_rest_position(108).x + KeyMap3D.WHITE_WIDTH * 0.5
+		var tan_h_new: float = half_width / (0.962 * maxf(depth_front, 0.1) * aspect)
+		fov = clampf(rad_to_deg(2.0 * atan(tan_h_new)), 1.0, 179.0)
+	camera.fov = fov
+	camera.position = Vector3(0.0, 1.65, z0)
+	camera.rotation_degrees = Vector3(-79.0, 0.0, 0.0)
 
 func _on_resized() -> void:
 	arrange(size)
@@ -219,44 +274,21 @@ func _process(delta: float) -> void:
 	var damping: float = 1.0 - exp(-24.0 * delta)
 	for index in range(_keys.size()):
 		_depth[index] = lerpf(_depth[index], float(_pressed[index]), damping)
-		var black: bool = _is_black(index + 21)
-		_keys[index].position = _rest[index] - Vector3(0.0, _depth[index] * (0.009 if black else 0.007), 0.0)
-		_keys[index].rotation.x = 0.0 if black else deg_to_rad(-3.2) * _depth[index]
+		_keys[index].transform = key_map.get_key_pressed_transform(index + 21, _depth[index])
 		_energy[index] = 2.0 if _pressed[index] != 0 else _energy[index] * exp(-3.8 * delta)
 		_key_materials[index].emission_energy_multiplier = _energy[index]
-	_update_hands(damping)
+	_elapsed_time += delta
+	_update_hands(delta)
+	_update_hand_lights(damping)
 	_update_cascade()
 
-func _update_hands(damping: float) -> void:
-	for side in range(_hands.size()):
-		var hand: Node3D = _hands[side]
-		var sum: float = 0.0
-		var count: int = 0
-		var fingers: PackedFloat32Array = PackedFloat32Array([0, 0, 0, 0, 0])
-		for index in range(_keys.size()):
-			if _pressed[index] == 0 or (0 if index + 21 < 60 else 1) != side:
-				continue
-			sum += _rest[index].x
-			count += 1
-		if count > 0:
-			hand.position.x = lerpf(hand.position.x, clampf(sum / count, -0.53, 0.53), damping)
-		for index in range(_keys.size()):
-			if _pressed[index] != 0 and (0 if index + 21 < 60 else 1) == side:
-				var finger: int = clampi(roundi((_rest[index].x - hand.position.x) / 0.024 + 2.0), 0, 4)
-				fingers[finger] = 1.0
-		var skeleton: Skeleton3D = _skeletons[side]
-		if skeleton == null:
-			continue
-		var names: PackedStringArray = PackedStringArray(["pinky", "ring", "middle", "index", "thumb"] if side == 0 else ["thumb", "index", "middle", "ring", "pinky"])
-		for finger in range(5):
-			for segment: String in ["proximal", "intermediate", "distal"]:
-				var prefix: String = "thumb-phalanx-" if names[finger] == "thumb" else names[finger] + "-finger-phalanx-"
-				var bone: int = skeleton.find_bone(prefix + segment)
-				if bone < 0:
-					continue
-				var rest_rotation: Quaternion = skeleton.get_bone_rest(bone).basis.get_rotation_quaternion()
-				var target: Quaternion = rest_rotation * Quaternion(Vector3.RIGHT, deg_to_rad(-12.0 * fingers[finger]))
-				skeleton.set_bone_pose_rotation(bone, skeleton.get_bone_pose_rotation(bone).slerp(target, damping))
+func _update_hands(delta: float) -> void:
+	var wrists: Array[float] = []
+	for hand: Node3D in _hands:
+		wrists.append(hand.position.x)
+	var plans: Array[FingeringSolver.HandPlan] = fingering_solver.solve(key_map, _pressed, _depth, _notes, _note_cursor, _playback_time, wrists)
+	for side: int in range(hand_controllers.size()):
+		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time)
 
 func _update_cascade() -> void:
 	if world_root == null or _bar_shader == null:
@@ -272,8 +304,8 @@ func _update_cascade() -> void:
 			continue
 		var near_time: float = clampf(note.start - _playback_time, 0.0, LOOKAHEAD)
 		var far_time: float = clampf(note.start + note.duration - _playback_time, 0.0, LOOKAHEAD)
-		var length: float = maxf((far_time - near_time) / LOOKAHEAD * 1.45, 0.005)
-		var distance: float = (near_time + far_time) * 0.5 / LOOKAHEAD * 1.45
+		var length: float = maxf((far_time - near_time) / LOOKAHEAD * CASCADE_SPAN, 0.005)
+		var distance: float = (near_time + far_time) * 0.5 / LOOKAHEAD * CASCADE_SPAN
 		if used >= _bars.size():
 			var material: ShaderMaterial = ShaderMaterial.new()
 			material.shader = _bar_shader
@@ -285,12 +317,29 @@ func _update_cascade() -> void:
 			_bars.append(new_bar)
 		var bar: MeshInstance3D = _bars[used]
 		bar.visible = true
-		bar.position = Vector3(_rest[note.midi - 21].x, 0.085 + distance * 0.32, -0.15 - distance)
-		bar.rotation.x = atan(0.32)
-		bar.scale = Vector3(0.012 if _is_black(note.midi) else 0.019, 0.006, length * sqrt(1.0 + 0.32 * 0.32))
+		bar.position = Vector3(_rest[note.midi - 21].x, STRIKE_Y + distance * SLOPE, STRIKE_Z - distance)
+		bar.rotation.x = atan(SLOPE)
+		bar.scale = Vector3(0.012 if _is_black(note.midi) else 0.019, 0.006, length * sqrt(1.0 + SLOPE * SLOPE))
 		var material: ShaderMaterial = bar.material_override as ShaderMaterial
 		material.set_shader_parameter("tint", note.color)
 		material.set_shader_parameter("dimensions", bar.scale)
 		used += 1
 	for index in range(used, _bars.size()):
 		_bars[index].visible = false
+
+func _update_hand_lights(damping: float) -> void:
+	for side in range(_hand_lights.size()):
+		var light: OmniLight3D = _hand_lights[side]
+		var tint: Color = Color(0.0, 0.0, 0.0, 0.0)
+		var count: int = 0
+		for index in range(_pressed.size()):
+			if _pressed[index] != 0 and (0 if index + 21 < 60 else 1) == side:
+				tint += _key_materials[index].emission
+				count += 1
+		if side < _hands.size():
+			light.position.x = lerpf(light.position.x, _hands[side].position.x, damping)
+		if count > 0:
+			tint /= float(count)
+			tint.a = 1.0
+			light.light_color = light.light_color.lerp(tint, damping)
+		light.light_energy = lerpf(light.light_energy, minf(2.2, 0.9 + 0.3 * count) if count > 0 else 0.0, damping)
