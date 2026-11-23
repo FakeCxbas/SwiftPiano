@@ -11,6 +11,12 @@ class FingerChain extends RefCounted:
 	var angles: PackedFloat32Array = PackedFloat32Array()
 	var rest_tip: Vector3 = Vector3.ZERO
 	var splay: float = 0.0
+	var last_midi: int = -1
+	var last_state: int = 0
+	var strike_impulse: float = 0.0
+	var release_rebound: float = 0.0
+	var black_blend: float = 0.0
+	var root_offset: Vector3 = Vector3.ZERO
 
 const FINGER_NAMES: Array[String] = ["thumb", "index", "middle", "ring", "pinky"]
 const REST_SPLAY_LEFT: Array[float] = [-0.045, -0.018, 0.0, 0.018, 0.040]
@@ -72,9 +78,9 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 	var step: float = maxf(delta, 0.0)
 	var wrist_damping: float = 1.0 - exp(-WRIST_SPEED * step)
 	var ratio: float = clampf(plan.black_ratio, 0.0, 1.0)
-	var target_y: float = lerpf(0.079, 0.088, ratio)
+	var target_y: float = lerpf(0.078, 0.086, ratio)
 	if plan.active_count > 0 and ratio < 0.5:
-		target_y -= 0.005
+		target_y = 0.072
 	if plan.active_count == 0:
 		target_y += sin(elapsed_time * 2.1 + float(side) * 1.3) * 0.0012
 	var target_x: float = plan.wrist_target_x
@@ -83,7 +89,7 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 	var raw_next_x: float = lerpf(prev_x, target_x, 1.0 - exp(-x_speed * step))
 	var max_step: float = maxf(0.038, 1.8 * step)
 	var next_x: float = prev_x + clampf(raw_next_x - prev_x, -max_step, max_step)
-	var target: Vector3 = Vector3(next_x, target_y, lerpf(0.184, 0.138, ratio))
+	var target: Vector3 = Vector3(next_x, target_y, lerpf(0.172, 0.136, ratio))
 	hand_root.position = hand_root.position.lerp(target, wrist_damping)
 	hand_root.position.x = next_x
 	if step > 0.0001:
@@ -108,21 +114,47 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 		var assignment: FingeringSolver.FingerAssignment = plan.fingers[finger]
 		var striking: bool = assignment.state == FingeringSolver.FingerState.STRIKING
 		var anticipating: bool = assignment.state == FingeringSolver.FingerState.ANTICIPATING
+		if striking and (chain.last_state != FingeringSolver.FingerState.STRIKING or chain.last_midi != assignment.midi):
+			chain.strike_impulse = 1.0
+			chain.release_rebound = 0.0
+		elif not striking and not anticipating and chain.last_state == FingeringSolver.FingerState.STRIKING:
+			chain.release_rebound = 1.0
+			chain.strike_impulse = 0.0
+		chain.strike_impulse *= exp(-13.0 * step)
+		chain.release_rebound *= exp(-11.0 * step)
+		chain.last_state = assignment.state
+		chain.last_midi = assignment.midi
 		var rate: float = ATTACK_SPEED if striking else (ANTICIPATION_SPEED if anticipating else RELEASE_SPEED)
 		var damping: float = 1.0 - exp(-rate * step)
+		chain.black_blend = lerpf(chain.black_blend, 1.0 if ((striking or anticipating) and assignment.is_black) else 0.0, damping)
+		var target_root_offset: Vector3 = Vector3.ZERO
+		if chain.black_blend > 0.05 and (striking or anticipating):
+			target_root_offset = Vector3(0.0, -0.018 * chain.black_blend, -0.007 * chain.black_blend + (0.004 * chain.strike_impulse if striking else -0.004))
+		elif striking:
+			target_root_offset = Vector3(0.0, 0.002, 0.004 + 0.0035 * chain.strike_impulse)
+		else:
+			var prep_lift: float = maxf(assignment.weight if anticipating else 0.0, chain.release_rebound)
+			target_root_offset = Vector3(0.0, -0.003 * prep_lift, -0.0045 * prep_lift)
+		chain.root_offset = chain.root_offset.lerp(target_root_offset, damping)
 		var marker_target: Vector3 = assignment.target_pos if striking or anticipating else _idle_target(chain)
 		markers[finger].global_position = markers[finger].global_position.lerp(_stage_to_world(marker_target), damping)
 		var black: bool = key_map.is_black_key(assignment.midi) if striking else false
 		var targets: PackedFloat32Array = _finger_angles(finger, striking, black)
-		if anticipating:
-			targets[0] += 5.0 * assignment.weight
-			targets[1] += 7.0 * assignment.weight
+		if striking:
+			targets[0] -= 5.0 * chain.strike_impulse
+			targets[1] -= 8.0 * chain.strike_impulse
 			if targets.size() > 2:
-				targets[2] -= 2.0 * assignment.weight
-		elif not striking and _has_striking_neighbor(plan, finger):
-			var sympathetic: PackedFloat32Array = _finger_angles(finger, true, false)
-			for joint: int in range(targets.size()):
-				targets[joint] = lerpf(targets[joint], sympathetic[joint], 0.15)
+				targets[2] -= 4.0 * chain.strike_impulse
+		elif anticipating:
+			targets[0] += 8.0 * assignment.weight
+			targets[1] += 12.0 * assignment.weight
+			if targets.size() > 2:
+				targets[2] += 4.0 * assignment.weight
+		elif chain.release_rebound > 0.01:
+			targets[0] += 6.0 * chain.release_rebound
+			targets[1] += 9.0 * chain.release_rebound
+		elif _has_striking_neighbor(plan, finger):
+			targets[1] += 3.0
 		for joint: int in range(chain.angles.size()):
 			chain.angles[joint] = lerpf(chain.angles[joint], targets[joint], damping)
 		var target_splay: float = rest_splays[finger]
@@ -147,20 +179,20 @@ func _world_to_stage(point: Vector3) -> Vector3:
 	return stage.to_local(point) if stage != null else point
 
 func _idle_target(chain: FingerChain) -> Vector3:
-	return hand_root.position + Vector3(chain.rest_tip.x, -0.044, -0.145)
+	return hand_root.position + Vector3(chain.rest_tip.x, -0.044, -0.140)
 
 func _finger_angles(finger: int, striking: bool, black: bool) -> PackedFloat32Array:
 	match finger:
 		0:
-			return PackedFloat32Array(([4.0, -4.0, -6.0] if black else [-4.0, -12.0, -14.0]) if striking else [10.0, 7.0, 5.0])
+			return PackedFloat32Array(([3.0, -5.0, -7.0] if black else [-5.0, -12.0, -14.0]) if striking else [10.0, 6.0, 4.0])
 		1:
-			return PackedFloat32Array(([1.0, -21.0, -25.0, -17.0] if black else [-3.0, -28.0, -31.0, -20.0]) if striking else [3.0, -18.0, -23.0, -15.0])
+			return PackedFloat32Array(([1.0, -19.0, -21.0, -14.0] if black else [-4.0, -27.0, -25.0, -16.0]) if striking else [5.0, -14.0, -18.0, -12.0])
 		2:
-			return PackedFloat32Array(([1.0, -22.0, -26.0, -17.0] if black else [-3.0, -29.0, -32.0, -21.0]) if striking else [3.0, -20.0, -25.0, -16.0])
+			return PackedFloat32Array(([1.0, -20.0, -22.0, -14.0] if black else [-4.0, -28.0, -26.0, -17.0]) if striking else [5.0, -15.0, -20.0, -13.0])
 		3:
-			return PackedFloat32Array(([1.0, -21.0, -25.0, -16.0] if black else [-3.0, -28.0, -31.0, -20.0]) if striking else [3.0, -19.0, -24.0, -15.0])
+			return PackedFloat32Array(([1.0, -19.0, -21.0, -14.0] if black else [-4.0, -27.0, -25.0, -16.0]) if striking else [5.0, -15.0, -19.0, -12.0])
 		_:
-			return PackedFloat32Array(([3.0, -18.0, -21.0, -14.0] if black else [-1.0, -26.0, -28.0, -18.0]) if striking else [4.0, -17.0, -20.0, -13.0])
+			return PackedFloat32Array(([2.0, -17.0, -19.0, -12.0] if black else [-3.0, -25.0, -23.0, -15.0]) if striking else [6.0, -13.0, -17.0, -11.0])
 
 func _apply_finger_fk(chain: FingerChain) -> void:
 	if _skeleton == null:
@@ -171,7 +203,7 @@ func _apply_finger_fk(chain: FingerChain) -> void:
 	var axis: Vector3 = Vector3(1.0, 0.35 if side == 0 else -0.35, 0.0).normalized() if chain.finger_name == "thumb" else Vector3.RIGHT
 	for joint: int in range(chain.bones.size()):
 		var rest: Transform3D = chain.rests[joint]
-		position = rest.origin if joint == 0 else position + cumulative * (rest.origin - previous_rest)
+		position = rest.origin + chain.root_offset if joint == 0 else position + cumulative * (rest.origin - previous_rest)
 		var delta_basis: Basis = Basis.IDENTITY
 		if joint < chain.angles.size():
 			delta_basis = Basis(axis, deg_to_rad(chain.angles[joint]))

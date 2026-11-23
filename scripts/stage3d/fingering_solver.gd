@@ -19,7 +19,7 @@ class HandPlan extends RefCounted:
 	var anticipating_count: int = 0
 	var fingers: Array[FingerAssignment] = []
 
-const LOOKAHEAD_SEC: float = 0.26
+const LOOKAHEAD_SEC: float = 0.28
 const IDLE_LOOKAHEAD_SEC: float = 0.45
 const WRIST_MIN_X: float = -0.565
 const WRIST_MAX_X: float = 0.565
@@ -28,6 +28,9 @@ const FINGER_REST_X_LEFT: Array[float] = [0.052, 0.022, 0.0, -0.020, -0.042]
 const FINGER_REST_X_RIGHT: Array[float] = [-0.052, -0.022, 0.0, 0.020, 0.042]
 
 var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
+var _held_finger_for_midi: Array[Dictionary] = [{}, {}]
+var _last_active_midi: Array[int] = [-1, -1]
+var _last_active_finger: Array[int] = [-1, -1]
 
 
 func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Array, notes: Array, note_cursor: int, playback_time: float, current_wrist_x: Array[float]) -> Array[HandPlan]:
@@ -70,8 +73,10 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		var future_midis: Array = upcoming[side].keys()
 		future_midis.sort()
 		for midi: int in future_midis:
-			centroid += key_map.get_key_rest_position(midi).x * 0.45
-			total_weight += 0.45
+			var time_until: float = float(upcoming[side][midi]) - playback_time
+			var future_weight: float = 0.75 if time_until <= 0.12 else 0.35
+			centroid += key_map.get_key_rest_position(midi).x * future_weight
+			total_weight += future_weight
 		if total_weight > 0.0:
 			plan.wrist_target_x = clampf(centroid / total_weight, WRIST_MIN_X, WRIST_MAX_X)
 		elif not idle_upcoming[side].is_empty():
@@ -92,6 +97,8 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		var next_retention: Dictionary = {}
 		var black_weight: float = 0.0
 		var assigned_weight: float = 0.0
+		var highest_strike_midi: int = -1
+		var highest_strike_finger: int = -1
 		for midi: int in strikes:
 			var finger: int = int(strikes[midi])
 			var assignment: FingerAssignment = plan.fingers[finger]
@@ -105,26 +112,35 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.active_count += 1
 			assigned_weight += 1.0
 			black_weight += 1.0 if assignment.is_black else 0.0
-			anchor_sum += key_map.get_key_rest_position(midi).x - offsets[finger] * 0.70
+			anchor_sum += key_map.get_key_rest_position(midi).x - offsets[finger] * 0.85
 			anchor_weight += 1.0
 			next_retention[midi] = finger
+			if midi > highest_strike_midi:
+				highest_strike_midi = midi
+				highest_strike_finger = finger
+		if highest_strike_midi >= 0:
+			_last_active_midi[side] = highest_strike_midi
+			_last_active_finger[side] = highest_strike_finger
 		for midi: int in anticipations:
 			var finger: int = int(anticipations[midi])
 			var assignment: FingerAssignment = plan.fingers[finger]
 			assignment.midi = midi
 			assignment.state = FingerState.ANTICIPATING
-			assignment.weight = clampf(1.0 - (float(upcoming[side][midi]) - playback_time) / LOOKAHEAD_SEC, 0.15, 1.0)
+			var time_until: float = float(upcoming[side][midi]) - playback_time
+			assignment.weight = clampf(1.0 - time_until / LOOKAHEAD_SEC, 0.15, 1.0)
 			assignment.is_black = key_map.is_black_key(midi)
 			assignment.target_pos = key_map.get_hover_point(midi, finger == 0)
 			plan.anticipating_count += 1
 			assigned_weight += 0.5
 			black_weight += 0.5 if assignment.is_black else 0.0
-			anchor_sum += (key_map.get_key_rest_position(midi).x - offsets[finger] * 0.70) * 0.45
-			anchor_weight += 0.45
+			var ant_anchor_weight: float = 0.75 if time_until <= 0.12 else 0.35
+			anchor_sum += (key_map.get_key_rest_position(midi).x - offsets[finger] * 0.85) * ant_anchor_weight
+			anchor_weight += ant_anchor_weight
 			next_retention[midi] = finger
 		if anchor_weight > 0.0:
 			plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
 		plan.black_ratio = black_weight / assigned_weight if assigned_weight > 0.0 else 0.0
+		_held_finger_for_midi[side] = strikes.duplicate()
 		_last_finger_for_midi[side] = next_retention
 		plans.append(plan)
 	return plans
@@ -219,6 +235,15 @@ func _finger_cost(key_map: KeyMap3D, midi: int, finger: int, side: int, wrist_x:
 			if _fits_fixed(midi, rank, side, fixed) and absf(key_x - wrist_x - offsets[inner_finger]) <= 0.07:
 				cost += 0.035
 				break
-	if int(_last_finger_for_midi[side].get(midi, -1)) == finger:
+	if int(_held_finger_for_midi[side].get(midi, -1)) == finger:
+		cost -= 0.15
+	elif int(_last_finger_for_midi[side].get(midi, -1)) == finger:
 		cost -= 0.012
+	if not _held_finger_for_midi[side].has(midi) and _last_active_midi[side] >= 0 and _last_active_midi[side] != midi and _last_active_finger[side] >= 0:
+		if _last_active_finger[side] == finger:
+			cost += 0.032
+		var rank: int = 4 - finger if side == 0 else finger
+		var prev_rank: int = 4 - _last_active_finger[side] if side == 0 else _last_active_finger[side]
+		if (midi > _last_active_midi[side] and rank > prev_rank) or (midi < _last_active_midi[side] and rank < prev_rank):
+			cost -= 0.010
 	return cost

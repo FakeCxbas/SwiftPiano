@@ -99,7 +99,7 @@ func _run() -> void:
 	var wrist_xs: Array[float] = [-0.18, 0.18]
 	var plans: Array = stage.fingering_solver.solve(stage.key_map, stage._pressed, stage._depth, stage._notes, 0, 0.0, wrist_xs)
 	var r_plan: FingeringSolver.HandPlan = plans[1]
-	check(r_plan.active_count == 1 and r_plan.anticipating_count == 2, "FingeringSolver assigns active notes and upcoming notes within 0.16s window")
+	check(r_plan.active_count == 1 and r_plan.anticipating_count == 2, "FingeringSolver assigns active notes and upcoming notes within 0.28s window")
 	var used_fingers: Array[int] = []
 	for fa: FingeringSolver.FingerAssignment in r_plan.fingers:
 		if fa.state != FingeringSolver.FingerState.IDLE:
@@ -179,7 +179,54 @@ func _run() -> void:
 		stage._process(0.016)
 	check(stage._hands[1].position.x > 0.45, "Right wrist decisively tracks high-register outer keys")
 	stage.release_all()
-	for _f in range(20):
+	for _f in range(25):
+		stage._process(0.016)
+
+	# Expressive 4-phase attack impulse & release rebound + melodic finger alternation
+	var imp_solver: FingeringSolver = FingeringSolver.new()
+	var p_buf: PackedByteArray = PackedByteArray()
+	var d_buf: PackedFloat32Array = PackedFloat32Array()
+	p_buf.resize(88)
+	d_buf.resize(88)
+	p_buf[60 - 21] = 1
+	var empty_n: Array[PianoStage3D.StageNote] = []
+	var w_pos: Array[float] = [-0.18, 0.14]
+	var plan_60: FingeringSolver.HandPlan = imp_solver.solve(stage.key_map, p_buf, d_buf, empty_n, 0, 0.0, w_pos)[1]
+	var f_60: int = -1
+	for fa: FingeringSolver.FingerAssignment in plan_60.fingers:
+		if fa.midi == 60:
+			f_60 = fa.finger_index
+	p_buf[60 - 21] = 0
+	p_buf[62 - 21] = 1
+	var plan_62: FingeringSolver.HandPlan = imp_solver.solve(stage.key_map, p_buf, d_buf, empty_n, 0, 0.0, w_pos)[1]
+	var f_62: int = -1
+	for fa: FingeringSolver.FingerAssignment in plan_62.fingers:
+		if fa.midi == 62:
+			f_62 = fa.finger_index
+	check(f_60 >= 0 and f_62 >= 0 and f_60 != f_62, "FingeringSolver alternates fingers on consecutive notes 60 -> 62 (%d vs %d)" % [f_60, f_62])
+
+	stage.press_key(64, Color.CYAN)
+	stage._process(0.016)
+	var imp_chain: HandIKController.FingerChain = null
+	for ch: HandIKController.FingerChain in stage.hand_controllers[1]._chains:
+		if ch.last_midi == 64 and ch.last_state == FingeringSolver.FingerState.STRIKING:
+			imp_chain = ch
+			break
+	check(imp_chain != null and imp_chain.strike_impulse > 0.5, "Pressing note triggers strong initial strike_impulse")
+	var peak_attack_prox: float = imp_chain.angles[1] if imp_chain != null else 0.0
+	for _f in range(6):
+		stage._process(0.016)
+		if imp_chain != null:
+			peak_attack_prox = minf(peak_attack_prox, imp_chain.angles[1])
+	for _f in range(30):
+		stage._process(0.016)
+	var steady_hold_prox: float = imp_chain.angles[1] if imp_chain != null else 0.0
+	check(peak_attack_prox < steady_hold_prox - 1.5, "Initial attack impulse bends proximal joint deeper (%0.2f deg) than steady hold (%0.2f deg)" % [peak_attack_prox, steady_hold_prox])
+	stage.release_all()
+	stage._process(0.016)
+	check(imp_chain.release_rebound > 0.5, "Releasing note triggers upward release_rebound")
+	check(stage.stage_viewport.msaa_3d == SubViewport.MSAA_4X, "SubViewport MSAA 4X active for clean finger silhouettes")
+	for _f in range(25):
 		stage._process(0.016)
 
 	# Test Main scene integration

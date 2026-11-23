@@ -57,6 +57,7 @@ func _ready() -> void:
 	stage_viewport.name = "StageViewport"
 	stage_viewport.own_world_3d = true
 	stage_viewport.transparent_bg = true
+	stage_viewport.msaa_3d = SubViewport.MSAA_4X
 	stage_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(stage_viewport)
 	world_root = Node3D.new()
@@ -81,7 +82,12 @@ func _ready() -> void:
 	world_root.add_child(environment_node)
 	var light: DirectionalLight3D = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-58.0, -22.0, 0.0)
-	light.light_energy = 0.78
+	light.light_energy = 0.72
+	light.shadow_enabled = true
+	light.shadow_opacity = 0.55
+	light.shadow_bias = 0.0006
+	light.shadow_normal_bias = 1.0
+	light.directional_shadow_max_distance = 3.0
 	world_root.add_child(light)
 	var rim: DirectionalLight3D = DirectionalLight3D.new()
 	rim.name = "HandRimLight"
@@ -180,7 +186,7 @@ func _build_hands() -> void:
 		# +90 degrees maps the negative-Y fingers toward the piano's -Z;
 		# original positive-Z palm surface faces down toward the key tops.
 		hand.rotation.x = PI * 0.5
-		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.079, 0.184)
+		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.078, 0.172)
 		hand.visible = _hands_enabled
 		_apply_hand_material(hand)
 		_hands.append(hand)
@@ -195,12 +201,13 @@ func _apply_hand_material(node: Node) -> void:
 		var material: ShaderMaterial = ShaderMaterial.new()
 		material.shader = ANIME
 		material.set_shader_parameter("u_albedo_tex", SKIN)
-		material.set_shader_parameter("u_skin_color", Color(0.86, 0.69, 0.58, 1.0))
-		material.set_shader_parameter("u_shadow_color", Color(0.30, 0.21, 0.19, 1.0))
+		material.set_shader_parameter("u_skin_color", Color(0.84, 0.67, 0.56, 1.0))
+		material.set_shader_parameter("u_shadow_color", Color(0.24, 0.16, 0.15, 1.0))
 		material.set_shader_parameter("u_nail_color", Color(0.88, 0.73, 0.67, 1.0))
 		var outline: ShaderMaterial = ShaderMaterial.new()
 		outline.shader = OUTLINE
-		outline.set_shader_parameter("u_outline_width", 0.00022)
+		outline.set_shader_parameter("u_outline_width", 0.00038)
+		outline.set_shader_parameter("u_outline_color", Color(0.11, 0.07, 0.08, 1.0))
 		material.next_pass = outline
 		mesh.material_override = material
 	for child: Node in node.get_children():
