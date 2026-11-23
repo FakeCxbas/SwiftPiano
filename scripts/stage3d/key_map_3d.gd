@@ -14,6 +14,11 @@ const BLACK_HEIGHT: float = 0.032
 const BLACK_LENGTH: float = 0.096
 const BLACK_Y: float = 0.027
 const BLACK_Z: float = -0.027
+const KEY_HINGE_Z: float = -0.075
+const WHITE_TILT_DEG: float = 5.2
+const BLACK_TILT_DEG: float = 6.5
+const WHITE_SINK: float = 0.0012
+const BLACK_SINK: float = 0.0025
 
 var _rest_positions: Array[Vector3] = []
 var _black_flags: PackedByteArray = PackedByteArray()
@@ -43,14 +48,25 @@ func get_key_dimensions(midi: int) -> Vector3:
 
 func get_key_pressed_transform(midi: int, depth_01: float) -> Transform3D:
 	var black: bool = is_black_key(midi)
-	var rotation: Basis = Basis.IDENTITY if black else Basis(Vector3.RIGHT, deg_to_rad(-3.2) * depth_01)
-	return Transform3D(rotation, get_key_rest_position(midi) - Vector3(0.0, depth_01 * (0.009 if black else 0.007), 0.0))
+	var d: float = clampf(depth_01, -0.06, 1.12)
+	var angle: float = deg_to_rad(BLACK_TILT_DEG if black else WHITE_TILT_DEG) * d
+	var rot: Basis = Basis(Vector3.RIGHT, angle)
+	var rest: Vector3 = get_key_rest_position(midi)
+	var pivot: Vector3 = Vector3(rest.x, rest.y, KEY_HINGE_Z)
+	var sink: float = (BLACK_SINK if black else WHITE_SINK) * d
+	var pos: Vector3 = pivot + rot * (rest - pivot) - Vector3(0.0, sink, 0.0)
+	return Transform3D(rot, pos)
 
 func get_strike_contact_point(midi: int, depth_01: float, is_thumb: bool = false) -> Vector3:
 	var rest: Vector3 = get_key_rest_position(midi)
+	var d: float = clampf(depth_01, 0.0, 1.12)
 	if is_black_key(midi):
-		return Vector3(rest.x, 0.041 - depth_01 * 0.009, 0.006 if is_thumb else -0.012)
-	return Vector3(rest.x, 0.009 - depth_01 * 0.007, 0.052 if is_thumb else 0.033)
+		var contact_z: float = 0.006 if is_thumb else -0.012
+		var drop: float = sin(deg_to_rad(BLACK_TILT_DEG) * d) * (contact_z - KEY_HINGE_Z) + BLACK_SINK * d
+		return Vector3(rest.x, 0.041 - drop, contact_z)
+	var contact_z: float = 0.052 if is_thumb else 0.033
+	var drop: float = sin(deg_to_rad(WHITE_TILT_DEG) * d) * (contact_z - KEY_HINGE_Z) + WHITE_SINK * d
+	return Vector3(rest.x, 0.009 - drop, contact_z)
 
 func get_hover_point(midi: int, is_thumb: bool = false) -> Vector3:
 	return get_strike_contact_point(midi, 0.0, is_thumb) + Vector3(0.0, 0.016, 0.002)

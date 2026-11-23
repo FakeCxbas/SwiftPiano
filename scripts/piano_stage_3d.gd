@@ -35,8 +35,16 @@ var _key_materials: Array[StandardMaterial3D] = []
 var _rest: Array[Vector3] = []
 var _pressed: PackedByteArray = PackedByteArray()
 var _depth: PackedFloat32Array = PackedFloat32Array()
+var _depth_vel: PackedFloat32Array = PackedFloat32Array()
 var _energy: PackedFloat32Array = PackedFloat32Array()
+var _rail_pulse: PackedFloat32Array = PackedFloat32Array()
 var _strike_serial: PackedInt32Array = PackedInt32Array()
+var _key_colors: Array[Color] = []
+var _rail_segments: Array[MeshInstance3D] = []
+var _rail_segment_materials: Array[StandardMaterial3D] = []
+var _rail_halos: Array[MeshInstance3D] = []
+var _rail_halo_materials: Array[ShaderMaterial] = []
+var _rail_halo_shader: Shader
 var _hands: Array[Node3D] = []
 var _skeletons: Array[Skeleton3D] = []
 var key_map: KeyMap3D = KeyMap3DClass.new()
@@ -105,6 +113,7 @@ func _ready() -> void:
 		hand_light.position = Vector3(-0.18 if side == 0 else 0.18, 0.065, -0.020)
 		hand_light.omni_range = 0.30
 		hand_light.light_energy = 0.0
+		hand_light.light_cull_mask = 2
 		world_root.add_child(hand_light)
 		_hand_lights.append(hand_light)
 	var cascade: MeshInstance3D = _box("CascadeSurface", Vector3(1.26, 0.004, CASCADE_SPAN * sqrt(1.0 + SLOPE * SLOPE)), Vector3(0.0, STRIKE_Y - 0.006 + CASCADE_SPAN * 0.5 * SLOPE, STRIKE_Z - CASCADE_SPAN * 0.5), _material(Color("131420"), 0.6, 0.2))
@@ -158,8 +167,26 @@ func _is_black(midi: int) -> bool:
 func _build_keyboard() -> void:
 	_pressed.resize(88)
 	_depth.resize(88)
+	_depth_vel.resize(88)
 	_energy.resize(88)
+	_rail_pulse.resize(88)
 	_strike_serial.resize(88)
+	_key_colors.clear()
+	_rail_halo_shader = Shader.new()
+	_rail_halo_shader.code = """shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
+uniform vec4 tint : source_color = vec4(0.39, 0.91, 0.82, 1.0);
+uniform float intensity = 0.0;
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	float core = exp(-(p.x * p.x * 2.8 + p.y * p.y * 5.2));
+	float edge = smoothstep(1.0, 0.15, length(p));
+	float a = core * edge * clamp(intensity, 0.0, 2.2);
+	vec3 col = mix(tint.rgb, vec3(1.0), clamp(core * 0.55 * min(intensity, 1.0), 0.0, 0.65));
+	ALBEDO = col * a;
+	ALPHA = clamp(a, 0.0, 1.0);
+}
+"""
 	for midi in range(21, 109):
 		var black: bool = _is_black(midi)
 		var material: StandardMaterial3D = _material(Color("171822") if black else Color("f4f1ea"), 0.25 if black else 0.24, 0.68 if black else 0.55)
@@ -171,11 +198,37 @@ func _build_keyboard() -> void:
 		_keys.append(key)
 		_key_materials.append(material)
 		_rest.append(location)
+		_key_colors.append(Color.CYAN)
+		var seg_w: float = KeyMap3D.BLACK_WIDTH * 1.15 if black else KeyMap3D.WHITE_WIDTH * 1.04
+		var seg_mat: StandardMaterial3D = StandardMaterial3D.new()
+		seg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		seg_mat.albedo_color = Color.CYAN
+		var seg: MeshInstance3D = _box("RailGlow%d" % midi, Vector3(seg_w, 0.0044, 0.0044), Vector3(location.x, 0.0246, -0.079), seg_mat)
+		seg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		seg.visible = false
+		_rail_segments.append(seg)
+		_rail_segment_materials.append(seg_mat)
+		var halo_mat: ShaderMaterial = ShaderMaterial.new()
+		halo_mat.shader = _rail_halo_shader
+		halo_mat.set_shader_parameter("tint", Color.CYAN)
+		halo_mat.set_shader_parameter("intensity", 0.0)
+		var halo_mesh: PlaneMesh = PlaneMesh.new()
+		halo_mesh.size = Vector2(seg_w * 2.2, 0.014)
+		var halo: MeshInstance3D = MeshInstance3D.new()
+		halo.name = "RailHalo%d" % midi
+		halo.mesh = halo_mesh
+		halo.material_override = halo_mat
+		halo.position = Vector3(location.x, 0.0265, -0.0835)
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		halo.visible = false
+		world_root.add_child(halo)
+		_rail_halos.append(halo)
+		_rail_halo_materials.append(halo_mat)
 	_box("LacquerChassis", Vector3(1.28, 0.045, 0.29), Vector3(0.0, -0.036, -0.045), _material(Color("0b0c12"), 0.2, 0.7))
-	var rail_material: StandardMaterial3D = _material(Color("598eaa"), 0.3, 0.55)
+	var rail_material: StandardMaterial3D = _material(Color("3b647a"), 0.3, 0.55)
 	rail_material.emission_enabled = true
-	rail_material.emission = Color("68bdd9")
-	rail_material.emission_energy_multiplier = 1.2
+	rail_material.emission = Color("4a90ab")
+	rail_material.emission_energy_multiplier = 0.45
 	_box("StrikeLineRail", Vector3(1.23, 0.003, 0.003), Vector3(0.0, 0.024, -0.079), rail_material)
 
 func _build_hands() -> void:
@@ -201,6 +254,7 @@ func _build_hands() -> void:
 func _apply_hand_material(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mesh: MeshInstance3D = node as MeshInstance3D
+		mesh.layers = 3
 		var material: ShaderMaterial = ShaderMaterial.new()
 		material.shader = ANIME
 		material.set_shader_parameter("u_albedo_tex", SKIN)
@@ -221,9 +275,12 @@ func press_key(midi: int, color: Color) -> void:
 	if index < 0 or index >= _keys.size():
 		return
 	_pressed[index] = 1
-	_depth[index] = minf(_depth[index], 0.35)
+	_depth[index] = minf(_depth[index], 0.25)
+	_depth_vel[index] = maxf(_depth_vel[index], 12.0)
 	_strike_serial[index] += 1
 	_energy[index] = 2.0
+	_rail_pulse[index] = 1.0
+	_key_colors[index] = color
 	_key_materials[index].emission = color
 
 func release_key(midi: int) -> void:
@@ -286,12 +343,46 @@ func _on_resized() -> void:
 	arrange(size)
 
 func _process(delta: float) -> void:
+	var dt: float = clampf(delta, 0.0, 0.033)
 	var damping: float = 1.0 - exp(-24.0 * delta)
 	for index in range(_keys.size()):
-		_depth[index] = lerpf(_depth[index], float(_pressed[index]), damping)
+		var target_depth: float = float(_pressed[index])
+		var stiffness: float = 780.0 if _pressed[index] != 0 else 460.0
+		var damp: float = 44.0 if _pressed[index] != 0 else 34.0
+		var accel: float = (target_depth - _depth[index]) * stiffness - _depth_vel[index] * damp
+		_depth_vel[index] += accel * dt
+		_depth[index] = clampf(_depth[index] + _depth_vel[index] * dt, -0.04, 1.08)
+		if absf(_depth[index] - target_depth) < 0.0005 and absf(_depth_vel[index]) < 0.005:
+			_depth[index] = target_depth
+			_depth_vel[index] = 0.0
 		_keys[index].transform = key_map.get_key_pressed_transform(index + 21, _depth[index])
-		_energy[index] = 2.0 if _pressed[index] != 0 else _energy[index] * exp(-3.8 * delta)
-		_key_materials[index].emission_energy_multiplier = _energy[index]
+		var press_vis: float = clampf(_depth[index], 0.0, 1.0)
+		var mat: StandardMaterial3D = _key_materials[index]
+		if _is_black(index + 21):
+			mat.albedo_color = Color("171822").lerp(Color("2c3244"), press_vis * 0.70)
+			mat.roughness = lerpf(0.25, 0.16, press_vis)
+		else:
+			mat.albedo_color = Color("f4f1ea").lerp(Color("c9cfd9"), press_vis * 0.85)
+			mat.roughness = lerpf(0.24, 0.36, press_vis)
+		mat.emission_energy_multiplier = 0.0
+		_energy[index] = 2.0 if _pressed[index] != 0 else _energy[index] * exp(-5.0 * dt)
+		_rail_pulse[index] *= exp(-14.0 * dt)
+		var active_glow: bool = _energy[index] > 0.01
+		var seg: MeshInstance3D = _rail_segments[index]
+		var halo: MeshInstance3D = _rail_halos[index]
+		seg.visible = active_glow
+		halo.visible = active_glow
+		if active_glow:
+			var pulse: float = _rail_pulse[index]
+			var e_norm: float = clampf(_energy[index] * 0.5, 0.0, 1.0)
+			var tint: Color = _key_colors[index]
+			var core_col: Color = tint.lerp(Color.WHITE, 0.40 + 0.30 * pulse) * (1.1 + 0.7 * e_norm + 0.6 * pulse)
+			core_col.a = 1.0
+			_rail_segment_materials[index].albedo_color = core_col
+			seg.scale = Vector3(1.0 + 0.14 * pulse, 1.0 + 0.55 * pulse, 1.0 + 0.50 * pulse)
+			_rail_halo_materials[index].set_shader_parameter("tint", tint)
+			_rail_halo_materials[index].set_shader_parameter("intensity", _energy[index] * 0.55 + pulse * 0.65)
+			halo.scale = Vector3(1.0 + 0.25 * pulse, 1.0, 1.0 + 0.35 * pulse)
 	_elapsed_time += delta
 	_update_hands(delta)
 	_update_hand_lights(damping)
@@ -356,7 +447,7 @@ func _update_hand_lights(damping: float) -> void:
 			if _hands.size() == 2:
 				owner_side = 0 if absf(_rest[index].x - _hands[0].position.x) <= absf(_rest[index].x - _hands[1].position.x) else 1
 			if owner_side == side:
-				tint += _key_materials[index].emission
+				tint += _key_colors[index]
 				count += 1
 		if side < _hands.size():
 			light.position.x = lerpf(light.position.x, _hands[side].position.x, damping)

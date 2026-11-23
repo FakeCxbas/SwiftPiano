@@ -216,7 +216,7 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 				target_root_offset = Vector3(
 					clampf(delta_local.x, -0.034, 0.034),
 					clampf(delta_local.y, -0.046, 0.020),
-					clampf(delta_local.z, -0.025, 0.028)
+					clampf(delta_local.z, -0.025, 0.036)
 				)
 			elif anticipating:
 				var lift_t: float = maxf(assignment.weight, chain.release_rebound)

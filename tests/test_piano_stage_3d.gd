@@ -484,6 +484,44 @@ func _run() -> void:
 	check(app.bot_enabled and not app.auto_enabled and app.stage_3d._anticipation_enabled, "Activating Bot disables Auto and enables 3D anticipation")
 	app.set_bot_enabled(false)
 
+	# Regression: top-rail-only glow, hand-only OmniLights, downward hinged key animation, and physical albedo shading
+	stage.release_all()
+	for _f in range(70):
+		stage._process(0.016)
+	var w_idx: int = 60 - 21
+	var b_idx: int = 61 - 21
+	var w_rest_front_y: float = (stage._keys[w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var w_rest_back_y: float = (stage._keys[w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, -KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var b_rest_front_y: float = (stage._keys[b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, KeyMap3D.BLACK_LENGTH * 0.5)).y
+	var b_rest_back_y: float = (stage._keys[b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, -KeyMap3D.BLACK_LENGTH * 0.5)).y
+	var w_rest_albedo: Color = stage._key_materials[w_idx].albedo_color
+	var b_rest_albedo: Color = stage._key_materials[b_idx].albedo_color
+	check(stage._hand_lights[0].light_cull_mask == 2 and stage._hand_lights[1].light_cull_mask == 2, "Hand OmniLight3D nodes isolate illumination to layer 2 hands only")
+	stage.press_key(60, Color.CYAN)
+	stage.press_key(61, Color.RED)
+	for _f in range(12):
+		stage._process(0.016)
+	check(is_zero_approx(stage._key_materials[w_idx].emission_energy_multiplier) and is_zero_approx(stage._key_materials[b_idx].emission_energy_multiplier), "Pressed key bodies have zero neon emission")
+	check(stage._rail_segments[w_idx].visible and stage._rail_halos[w_idx].visible and stage._rail_segments[b_idx].visible and stage._rail_halos[b_idx].visible, "Top rail glow segments and halos activate for pressed white and black keys")
+	check(stage._rail_segments[w_idx].position.z <= -0.076 and stage._rail_halos[w_idx].position.z <= -0.076 and stage._rail_segments[b_idx].position.z <= -0.076 and stage._rail_halos[b_idx].position.z <= -0.076, "Rail glow emitters stay strictly on the bar above the keys")
+	var w_pressed_front_y: float = (stage._keys[w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var w_pressed_back_y: float = (stage._keys[w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, -KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var b_pressed_front_y: float = (stage._keys[b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, KeyMap3D.BLACK_LENGTH * 0.5)).y
+	var b_pressed_back_y: float = (stage._keys[b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, -KeyMap3D.BLACK_LENGTH * 0.5)).y
+	check(w_pressed_front_y < w_rest_front_y - 0.010 and w_pressed_back_y <= w_rest_back_y + 0.0005, "White key pivots downward around back hinge (>10mm front drop, back edge stays down)")
+	check(b_pressed_front_y < b_rest_front_y - 0.010 and b_pressed_back_y <= b_rest_back_y + 0.0005, "Black key pivots downward around back hinge (>10mm front drop, back edge stays down)")
+	check(stage._key_materials[w_idx].albedo_color.v < w_rest_albedo.v - 0.05 and stage._key_materials[b_idx].albedo_color.v > b_rest_albedo.v + 0.05, "Pressed keys show subtle physical albedo shift without glowing")
+	stage.release_all()
+	for _f in range(70):
+		stage._process(0.016)
+	check(not stage._rail_segments[w_idx].visible and not stage._rail_halos[w_idx].visible and not stage._rail_segments[b_idx].visible and not stage._rail_halos[b_idx].visible, "Top rail glow segments and halos hide cleanly after release decay")
+	check(stage._key_materials[w_idx].albedo_color.is_equal_approx(Color("f4f1ea")) and stage._key_materials[b_idx].albedo_color.is_equal_approx(Color("171822")), "Released keys restore resting ivory and ebony albedos")
+	app.set_stage_mode("3d")
+	check(app.keyboard.key_glow_layer != null and not app.keyboard.key_glow_layer.visible, "2D key_glow_layer stays hidden in 3D mode")
+	app.set_stage_mode("2d")
+	check(app.keyboard.key_glow_layer != null and app.keyboard.key_glow_layer.visible, "2D key_glow_layer becomes visible in 2D mode")
+	app.set_stage_mode("3d")
+
 	stage.queue_free()
 	app.queue_free()
 	await process_frame
