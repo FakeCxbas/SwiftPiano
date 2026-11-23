@@ -22,10 +22,10 @@ const BLACK_SINK: float = 0.0025
 const FINGER_PAD_RADIUS: float = 0.0082
 const FINGER_TIP_FORWARD: float = 0.0115
 const FINGER_HALF_WIDTH: float = 0.0085
-const WHITE_CONTACT_Z: float = 0.040
-const WHITE_THUMB_CONTACT_Z: float = 0.056
+const WHITE_CONTACT_Z: float = 0.042
+const WHITE_THUMB_CONTACT_Z: float = 0.070
 const BLACK_CONTACT_Z: float = -0.012
-const BLACK_THUMB_CONTACT_Z: float = 0.006
+const BLACK_THUMB_CONTACT_Z: float = 0.012
 
 var _rest_positions: Array[Vector3] = []
 var _black_flags: PackedByteArray = PackedByteArray()

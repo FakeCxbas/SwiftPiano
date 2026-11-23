@@ -23,8 +23,8 @@ const LOOKAHEAD_SEC: float = 0.28
 const WRIST_MIN_X: float = -0.565
 const WRIST_MAX_X: float = 0.565
 const DEFAULT_WRIST_X: Array[float] = [-0.18, 0.18]
-const FINGER_REST_X_LEFT: Array[float] = [0.045, 0.022, 0.0, -0.020, -0.042]
-const FINGER_REST_X_RIGHT: Array[float] = [-0.045, -0.022, 0.0, 0.020, 0.042]
+const FINGER_REST_X_LEFT: Array[float] = [0.052, 0.018, -0.007, -0.032, -0.048]
+const FINGER_REST_X_RIGHT: Array[float] = [-0.052, -0.018, 0.007, 0.032, 0.048]
 
 var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
 var _held_finger_for_midi: Array[Dictionary] = [{}, {}]
@@ -142,7 +142,7 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 				plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
 			if plan.fingers[0].state == FingerState.STRIKING and plan.fingers[0].midi >= 21:
 				var thumb_ideal_x: float = key_map.get_key_rest_position(plan.fingers[0].midi).x - offsets[0]
-				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.024, thumb_ideal_x + 0.024), WRIST_MIN_X, WRIST_MAX_X)
+				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.020, thumb_ideal_x + 0.020), WRIST_MIN_X, WRIST_MAX_X)
 			_last_wrist_x[side] = plan.wrist_target_x
 			_has_last_wrist_x[side] = true
 		elif anchor_weight > 0.0:

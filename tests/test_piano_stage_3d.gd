@@ -56,6 +56,47 @@ func _min_finger_clearance(stage: PianoStage3D, side: int) -> float:
 			min_clr = minf(min_clr, p_stage.y - (ceiling + KeyMap3D.FINGER_PAD_RADIUS))
 	return min_clr
 
+func _check_hand_anatomy(stage: PianoStage3D, side: int) -> Dictionary:
+	var skel: Skeleton3D = stage._skeletons[side]
+	var sign_dir: float = 1.0 if side == 1 else -1.0
+	var finger_bones: Array = [
+		["thumb-metacarpal", "thumb-phalanx-proximal", "thumb-phalanx-distal", "thumb-tip"],
+		["index-finger-metacarpal", "index-finger-phalanx-proximal", "index-finger-phalanx-intermediate", "index-finger-phalanx-distal", "index-finger-tip"],
+		["middle-finger-metacarpal", "middle-finger-phalanx-proximal", "middle-finger-phalanx-intermediate", "middle-finger-phalanx-distal", "middle-finger-tip"],
+		["ring-finger-metacarpal", "ring-finger-phalanx-proximal", "ring-finger-phalanx-intermediate", "ring-finger-phalanx-distal", "ring-finger-tip"],
+		["pinky-finger-metacarpal", "pinky-finger-phalanx-proximal", "pinky-finger-phalanx-intermediate", "pinky-finger-phalanx-distal", "pinky-finger-tip"]
+	]
+	var max_long_meta_disp: float = 0.0
+	var thumb_meta_disp: float = 0.0
+	var min_tip_gap: float = INF
+	var max_seg_err: float = 0.0
+	var tip_xs: PackedFloat32Array = PackedFloat32Array()
+	for spec_idx: int in range(finger_bones.size()):
+		var chain_names: Array = finger_bones[spec_idx]
+		for k: int in range(chain_names.size() - 1):
+			var b0: int = skel.find_bone(str(chain_names[k]))
+			var b1: int = skel.find_bone(str(chain_names[k + 1]))
+			var d_rest: float = skel.get_bone_rest(b1).origin.distance_to(skel.get_bone_rest(b0).origin)
+			var d_pose: float = skel.get_bone_pose_position(b1).distance_to(skel.get_bone_pose_position(b0))
+			max_seg_err = maxf(max_seg_err, absf(d_pose - d_rest))
+		var meta_idx: int = skel.find_bone(str(chain_names[0]))
+		var meta_disp: float = skel.get_bone_pose_position(meta_idx).distance_to(skel.get_bone_rest(meta_idx).origin)
+		if spec_idx == 0:
+			thumb_meta_disp = meta_disp
+		else:
+			max_long_meta_disp = maxf(max_long_meta_disp, meta_disp)
+		var tip_b: int = skel.find_bone(str(chain_names.back()))
+		var tip_stage: Vector3 = stage.world_root.to_local(skel.to_global(skel.get_bone_pose_position(tip_b)))
+		tip_xs.append(tip_stage.x)
+	for i: int in range(tip_xs.size() - 1):
+		min_tip_gap = minf(min_tip_gap, (tip_xs[i + 1] - tip_xs[i]) * sign_dir)
+	return {
+		"max_long_meta_disp": max_long_meta_disp,
+		"thumb_meta_disp": thumb_meta_disp,
+		"min_tip_gap": min_tip_gap,
+		"max_seg_err": max_seg_err
+	}
+
 func _run() -> void:
 	print("--- Running PianoStage3D Tests ---")
 	root.size = Vector2i(1920, 1080)
@@ -76,6 +117,9 @@ func _run() -> void:
 	var init_clr_l: float = _min_finger_clearance(stage, 0)
 	var init_clr_r: float = _min_finger_clearance(stage, 1)
 	check(init_clr_l >= -0.0025 and init_clr_r >= -0.0025, "Idle rest hands clear black and white keys without clipping (L=%.2fmm, R=%.2fmm)" % [init_clr_l * 1000.0, init_clr_r * 1000.0])
+	var init_anat_l: Dictionary = _check_hand_anatomy(stage, 0)
+	var init_anat_r: Dictionary = _check_hand_anatomy(stage, 1)
+	check(float(init_anat_l["max_long_meta_disp"]) < 0.0005 and float(init_anat_r["max_long_meta_disp"]) < 0.0005 and float(init_anat_l["min_tip_gap"]) >= 0.013 and float(init_anat_r["min_tip_gap"]) >= 0.013 and float(init_anat_l["max_seg_err"]) < 0.001 and float(init_anat_r["max_seg_err"]) < 0.001, "Idle hands preserve zero long-metacarpal dislocation, bone lengths, and finger separation (L_gap=%.1fmm, R_gap=%.1fmm)" % [float(init_anat_l["min_tip_gap"]) * 1000.0, float(init_anat_r["min_tip_gap"]) * 1000.0])
 	
 	# Test key depression
 	stage.press_key(60, Color.CYAN)
@@ -186,7 +230,11 @@ func _run() -> void:
 
 	var continuity_ok: bool = true
 	var jump_clearance_ok: bool = true
+	var jump_anatomy_ok: bool = true
 	var min_jump_clr: float = INF
+	var min_jump_gap: float = INF
+	var max_jump_meta: float = 0.0
+	var max_jump_thumb_meta: float = 0.0
 	var max_wrist_step: float = 0.0
 	var max_light_energy: float = 0.0
 	var chord_seq: Array = [[25, 28, 32], [103, 106, 108], [61, 66, 70], [42, 46, 51], [85, 90, 97]]
@@ -206,6 +254,12 @@ func _run() -> void:
 			min_jump_clr = minf(min_jump_clr, frame_clr)
 			if frame_clr < -0.003:
 				jump_clearance_ok = false
+			var anat: Dictionary = _check_hand_anatomy(stage, side_i)
+			min_jump_gap = minf(min_jump_gap, float(anat["min_tip_gap"]))
+			max_jump_meta = maxf(max_jump_meta, float(anat["max_long_meta_disp"]))
+			max_jump_thumb_meta = maxf(max_jump_thumb_meta, float(anat["thumb_meta_disp"]))
+			if float(anat["max_long_meta_disp"]) >= 0.0005 or float(anat["thumb_meta_disp"]) > 0.025 or float(anat["min_tip_gap"]) < 0.013 or float(anat["max_seg_err"]) >= 0.001:
+				jump_anatomy_ok = false
 			var sk_i: Skeleton3D = stage._skeletons[side_i]
 			for f_name: String in ["index", "middle", "ring", "pinky"]:
 				var b_names: Array[String] = [f_name + "-finger-phalanx-proximal", f_name + "-finger-phalanx-intermediate", f_name + "-finger-phalanx-distal", f_name + "-finger-tip"]
@@ -218,6 +272,7 @@ func _run() -> void:
 						continuity_ok = false
 	check(continuity_ok, "60-frame rapid octave jumps & black chords preserve all phalanx bone lengths within 1mm")
 	check(jump_clearance_ok, "60-frame rapid octave jumps keep all 10 fingers above key surfaces (min clr=%.2fmm)" % [min_jump_clr * 1000.0])
+	check(jump_anatomy_ok, "60-frame rapid octave jumps preserve anatomy without crossing or metacarpal dislocation (min_gap=%.1fmm, long_meta=%.2fmm, thumb_meta=%.1fmm)" % [min_jump_gap * 1000.0, max_jump_meta * 1000.0, max_jump_thumb_meta * 1000.0])
 	check(max_wrist_step < 0.05, "Rapid octave jumps interpolate smoothly without abrupt per-frame teleport steps")
 	check(max_light_energy <= 0.56, "Hand reactive OmniLight3D stays balanced and capped below saturation")
 
@@ -570,7 +625,9 @@ func _run() -> void:
 	for _f in range(25):
 		stage._process(0.016)
 	var clr_white_triad: float = _min_finger_clearance(stage, 1)
+	var anat_white_triad: Dictionary = _check_hand_anatomy(stage, 1)
 	check(clr_white_triad >= -0.0025, "White triad [60, 64, 67] avoids finger/black-key clipping (clr=%.2fmm)" % [clr_white_triad * 1000.0])
+	check(float(anat_white_triad["max_long_meta_disp"]) < 0.0005 and float(anat_white_triad["thumb_meta_disp"]) <= 0.025 and float(anat_white_triad["min_tip_gap"]) >= 0.013 and float(anat_white_triad["max_seg_err"]) < 0.001, "White triad [60, 64, 67] preserves anatomical hand shape (min_gap=%.1fmm, long_meta=%.2fmm)" % [float(anat_white_triad["min_tip_gap"]) * 1000.0, float(anat_white_triad["max_long_meta_disp"]) * 1000.0])
 	stage.release_all()
 	for _f in range(15):
 		stage._process(0.016)
@@ -580,7 +637,29 @@ func _run() -> void:
 		stage._process(0.016)
 	var clr_black_l: float = _min_finger_clearance(stage, 0)
 	var clr_black_r: float = _min_finger_clearance(stage, 1)
+	var anat_black_l: Dictionary = _check_hand_anatomy(stage, 0)
+	var anat_black_r: Dictionary = _check_hand_anatomy(stage, 1)
 	check(clr_black_l >= -0.0025 and clr_black_r >= -0.0025, "Black-key chords keep all fingers clear of unpressed black keys (L=%.2fmm, R=%.2fmm)" % [clr_black_l * 1000.0, clr_black_r * 1000.0])
+	check(float(anat_black_l["max_long_meta_disp"]) < 0.0005 and float(anat_black_r["max_long_meta_disp"]) < 0.0005 and float(anat_black_l["min_tip_gap"]) >= 0.013 and float(anat_black_r["min_tip_gap"]) >= 0.013 and float(anat_black_l["thumb_meta_disp"]) <= 0.025 and float(anat_black_r["thumb_meta_disp"]) <= 0.025, "Black-key chords preserve anatomical integrity on both hands (L_gap=%.1fmm, R_gap=%.1fmm)" % [float(anat_black_l["min_tip_gap"]) * 1000.0, float(anat_black_r["min_tip_gap"]) * 1000.0])
+
+	# Regression: wide octaves and mixed chords (Howl's Moving Castle [zd3]/[zutdO] shapes) never cross or dislocate fingers
+	var wide_chords: Array = [
+		{"label": "Wide octave [74, 86]", "midis": [74, 86]},
+		{"label": "Wide octave triad [75, 79, 87]", "midis": [75, 79, 87]},
+		{"label": "Dense mixed chord [74, 75, 77, 81, 86]", "midis": [74, 75, 77, 81, 86]}
+	]
+	for wc: Dictionary in wide_chords:
+		stage.release_all()
+		for _f in range(15):
+			stage._process(0.016)
+		for m: int in wc["midis"]:
+			stage.press_key(m, Color.RED)
+		for _f in range(25):
+			stage._process(0.016)
+		var wc_clr: float = _min_finger_clearance(stage, 1)
+		var wc_anat: Dictionary = _check_hand_anatomy(stage, 1)
+		check(wc_clr >= -0.0025, "%s clears keys cleanly (clr=%.2fmm)" % [str(wc["label"]), wc_clr * 1000.0])
+		check(float(wc_anat["max_long_meta_disp"]) < 0.0005 and float(wc_anat["thumb_meta_disp"]) <= 0.025 and float(wc_anat["min_tip_gap"]) >= 0.013 and float(wc_anat["max_seg_err"]) < 0.001, "%s keeps cohesive anatomy without crossing or metacarpal dislocation (min_gap=%.1fmm, long_meta=%.2fmm, thumb_meta=%.1fmm)" % [str(wc["label"]), float(wc_anat["min_tip_gap"]) * 1000.0, float(wc_anat["max_long_meta_disp"]) * 1000.0, float(wc_anat["thumb_meta_disp"]) * 1000.0])
 	stage.release_all()
 
 	stage.queue_free()
