@@ -433,6 +433,57 @@ func _run() -> void:
 	app._compile_sheet()
 	check(app.stage_3d._pressed[62 - 21] == 0, "Recompiling/replacing sheet clears stale 3D pressed keys")
 
+	# Regression: hands stay poised on last played key (X and black-key Z depth) until next active/imminent note
+	stage.set_anticipation_enabled(false)
+	var paused_sheet: Array[PianoStage3D.StageNote] = [
+		PianoStage3D.StageNote.new(60, 0.05, 0.25, Color.CYAN),
+		PianoStage3D.StageNote.new(64, 0.15, 0.25, Color.CYAN)
+	]
+	stage.set_notes(paused_sheet)
+	stage.set_playback_time(0.0)
+	stage.release_all()
+	stage.press_key(97, Color.RED)
+	for _f in range(25):
+		stage._process(0.016)
+	var rh_x_97: float = stage._hands[1].position.x
+	var rh_z_97: float = stage._hands[1].position.z
+	check(rh_x_97 > 0.35 and rh_z_97 < 0.155, "Right hand moves over high black key 97 (%0.3f, Z=%0.3f)" % [rh_x_97, rh_z_97])
+	stage.release_all()
+	for _f in range(30):
+		stage._process(0.016)
+	check(absf(stage._hands[1].position.x - rh_x_97) < 0.005 and absf(stage._hands[1].position.z - rh_z_97) < 0.005, "With anticipation disabled, releasing key 97 keeps hand poised over 97 instead of pulling to paused sheet")
+	check(stage.hand_controllers[1]._chains[2].last_state == FingeringSolver.FingerState.IDLE, "Fingers release cleanly to IDLE dome while wrist remains on last key")
+
+	stage.set_anticipation_enabled(true)
+	var distant_sheet: Array[PianoStage3D.StageNote] = [
+		PianoStage3D.StageNote.new(60, 0.40, 0.25, Color.CYAN)
+	]
+	stage.set_notes(distant_sheet)
+	stage.set_playback_time(0.0)
+	for _f in range(20):
+		stage._process(0.016)
+	check(absf(stage._hands[1].position.x - rh_x_97) < 0.005, "With anticipation enabled, hand stays over 97 when next note is > 0.28s away")
+	var no_notes_after_hold: Array[PianoStage3D.StageNote] = []
+	stage.set_notes(no_notes_after_hold)
+
+	# Regression: Main keeps 3D anticipation disabled in startup/Auto modes and hands stay over released key
+	check(not app.bot_enabled and not app.stage_3d._anticipation_enabled, "Main keeps 3D sheet anticipation disabled when Bot is off")
+	app._popup_action("Auto")
+	app._process(0.016)
+	check(app.auto_enabled and not app.bot_enabled and not app.stage_3d._anticipation_enabled, "Auto mode keeps Bot off and 3D anticipation disabled")
+	app._press_source("auto-hold-test", [97])
+	for _f in range(25):
+		app.stage_3d._process(0.016)
+	var app_rh_x_97: float = app.stage_3d._hands[1].position.x
+	app._release_source("auto-hold-test")
+	for _f in range(25):
+		app._process(0.016)
+		app.stage_3d._process(0.016)
+	check(app_rh_x_97 > 0.35 and absf(app.stage_3d._hands[1].position.x - app_rh_x_97) < 0.01, "In Auto mode with paused sheet at t=0, 3D hand stays over last played key 97")
+	app.set_bot_enabled(true)
+	check(app.bot_enabled and not app.auto_enabled and app.stage_3d._anticipation_enabled, "Activating Bot disables Auto and enables 3D anticipation")
+	app.set_bot_enabled(false)
+
 	stage.queue_free()
 	app.queue_free()
 	await process_frame

@@ -33,6 +33,8 @@ var markers: Array[Marker3D] = []
 var _skeleton: Skeleton3D
 var _chains: Array[FingerChain] = []
 var _wrist_velocity_x: float = 0.0
+var _hold_black_ratio: float = 0.0
+var _hold_z: float = 0.172
 
 func _init(hand_side: int, hand_node: Node3D, skel: Skeleton3D, marker_parent: Node3D) -> void:
 	setup(hand_side, hand_node, skel, marker_parent)
@@ -46,6 +48,8 @@ func setup(hand_side: int, hand_node: Node3D, skel: Skeleton3D, marker_parent: N
 	side = hand_side
 	hand_root = hand_node
 	_skeleton = skel
+	_hold_black_ratio = 0.0
+	_hold_z = 0.172
 	var rest_splays: Array[float] = REST_SPLAY_LEFT if side == 0 else REST_SPLAY_RIGHT
 	for finger: int in range(FINGER_NAMES.size()):
 		var chain: FingerChain = FingerChain.new()
@@ -99,7 +103,30 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 		chain.last_midi = assignment.midi
 		max_imp = maxf(max_imp, chain.strike_impulse)
 		max_reb = maxf(max_reb, chain.release_rebound)
-	var ratio: float = clampf(plan.black_ratio, 0.0, 1.0)
+	var plan_ratio: float = clampf(plan.black_ratio, 0.0, 1.0)
+	var plan_z: float = lerpf(0.172, 0.136, plan_ratio)
+	var thumb_assignment: FingeringSolver.FingerAssignment = plan.fingers[0] if not plan.fingers.is_empty() else null
+	if thumb_assignment != null:
+		if thumb_assignment.state == FingeringSolver.FingerState.STRIKING:
+			plan_z = minf(plan_z, 0.124 if thumb_assignment.is_black else 0.156)
+		elif thumb_assignment.state == FingeringSolver.FingerState.ANTICIPATING:
+			var thumb_ant_z: float = 0.132 if thumb_assignment.is_black else 0.160
+			plan_z = lerpf(plan_z, minf(plan_z, thumb_ant_z), thumb_assignment.weight)
+	var max_ant_weight: float = 0.0
+	for assignment: FingeringSolver.FingerAssignment in plan.fingers:
+		if assignment.state == FingeringSolver.FingerState.ANTICIPATING:
+			max_ant_weight = maxf(max_ant_weight, assignment.weight)
+	var ratio: float = _hold_black_ratio
+	var target_z: float = _hold_z
+	if plan.active_count > 0:
+		ratio = plan_ratio
+		target_z = plan_z
+		_hold_black_ratio = ratio
+		_hold_z = target_z
+	elif plan.anticipating_count > 0:
+		var z_blend: float = max_ant_weight * max_ant_weight
+		ratio = lerpf(_hold_black_ratio, plan_ratio, z_blend)
+		target_z = lerpf(_hold_z, plan_z, z_blend)
 	var target_y: float = lerpf(0.078, 0.086, ratio)
 	if plan.active_count > 0 and ratio < 0.5:
 		target_y = 0.072
@@ -112,14 +139,6 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 	var raw_next_x: float = lerpf(prev_x, target_x, 1.0 - exp(-x_speed * step))
 	var max_step: float = maxf(0.038, 1.8 * step)
 	var next_x: float = prev_x + clampf(raw_next_x - prev_x, -max_step, max_step)
-	var target_z: float = lerpf(0.172, 0.136, ratio)
-	var thumb_assignment: FingeringSolver.FingerAssignment = plan.fingers[0] if not plan.fingers.is_empty() else null
-	if thumb_assignment != null:
-		if thumb_assignment.state == FingeringSolver.FingerState.STRIKING:
-			target_z = minf(target_z, 0.124 if thumb_assignment.is_black else 0.156)
-		elif thumb_assignment.state == FingeringSolver.FingerState.ANTICIPATING:
-			var thumb_ant_z: float = 0.132 if thumb_assignment.is_black else 0.160
-			target_z = lerpf(target_z, minf(target_z, thumb_ant_z), thumb_assignment.weight)
 	var target: Vector3 = Vector3(next_x, target_y, target_z)
 	hand_root.position = hand_root.position.lerp(target, wrist_damping)
 	hand_root.position.x = next_x

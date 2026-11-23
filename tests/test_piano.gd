@@ -65,7 +65,7 @@ func _run() -> void:
 		if app.keyboard.right_finger_dips[i] > 0.01:
 			right_all_rest = false
 	check(left_all_rest and right_all_rest, "Articulated fingers return to rest position upon note release")
-	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Released hands return over MIDI 48 and 72")
+	check(is_equal_approx(app.keyboard.left_hand_target_x, left_center_59) and is_equal_approx(app.keyboard.right_hand_target_x, right_center_60), "Released hands stay over their last played keys (MIDI 59 and 60)")
 	app._press_source("hands-chord", [48, 52, 55, 61, 64, 67])
 	app.keyboard._process(0.0)
 	var expected_left_chord: float = (app.keyboard.key_rects[48].get_center().x + app.keyboard.key_rects[52].get_center().x + app.keyboard.key_rects[55].get_center().x) / 3.0
@@ -78,10 +78,12 @@ func _run() -> void:
 	app._release_source("hands-duplicate")
 	app._release_source("hands-chord")
 	app.set_key_range_mode("central_61")
+	var left_before_hidden: float = app.keyboard.left_hand_target_x
+	var right_before_hidden: float = app.keyboard.right_hand_target_x
 	var hidden_note: int = 21
 	app._press_source("hands-hidden", [hidden_note])
 	app.keyboard._process(0.0)
-	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Notes outside key_rects do not move the hands")
+	check(is_equal_approx(app.keyboard.left_hand_target_x, left_before_hidden) and is_equal_approx(app.keyboard.right_hand_target_x, right_before_hidden), "Notes outside key_rects do not move the hands")
 	app._release_source("hands-hidden")
 	app.set_key_range_mode("full_88")
 	var hand_x_before_motion: float = app.keyboard.left_hand_x
@@ -117,7 +119,8 @@ func _run() -> void:
 	app._release_source("hands-priority")
 	app.keyboard.set_hand_anticipation(-1.0, -1.0)
 	app.keyboard._process(0.0)
-	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[48].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, app.keyboard.key_rects[72].get_center().x), "Hands return to their idle resting keys when no notes are active or anticipated")
+	var expected_right_held: float = (app.keyboard.key_rects[61].get_center().x + app.keyboard.key_rects[64].get_center().x + app.keyboard.key_rects[67].get_center().x) / 3.0
+	check(is_equal_approx(app.keyboard.left_hand_target_x, app.keyboard.key_rects[52].get_center().x) and is_equal_approx(app.keyboard.right_hand_target_x, expected_right_held), "Hands stay over their last played keys when no notes are active or anticipated")
 	var whites = 0
 	for midi in app.keyboard.key_rects:
 		if not Keymap.is_black(midi):
@@ -339,11 +342,16 @@ func _run() -> void:
 	app.menu.song_list.item_selected.emit(1)
 	check(not app.menu.load_button.disabled, "Selected playable song enables Load")
 	app.menu.load_button.pressed.emit()
-	check(app.selected_song == "letras-002" and app.bot_enabled and not app.auto_enabled and app.step_index == 1, "Loading a song autostarts playback at its first step")
+	check(app.selected_song == "letras-002" and not app.bot_enabled and not app.auto_enabled and app.step_index == 0, "Loading a song keeps playback paused without auto-starting Bot")
 	app.sheet_text_edit.text = "[ceg] t"
 	app._load_song(2)
 	app._load_song(1)
 	check(app.sheet_text_edit.text == "[ceg] t", "Edits preserved as session drafts")
+	app._popup_action("Auto")
+	check(app.auto_enabled and not app.bot_enabled, "Toggling Auto never enables Bot automatically")
+	app.set_bot_enabled(true)
+	check(app.bot_enabled and not app.auto_enabled, "Enabling Bot explicitly disables Auto cleanly")
+	app.set_bot_enabled(false)
 	app._popup_action("Auto")
 	app.menu.show_section("library")
 	app.menu.search_field.grab_focus()

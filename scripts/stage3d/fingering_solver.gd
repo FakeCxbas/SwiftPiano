@@ -20,7 +20,6 @@ class HandPlan extends RefCounted:
 	var fingers: Array[FingerAssignment] = []
 
 const LOOKAHEAD_SEC: float = 0.28
-const IDLE_LOOKAHEAD_SEC: float = 0.45
 const WRIST_MIN_X: float = -0.565
 const WRIST_MAX_X: float = 0.565
 const DEFAULT_WRIST_X: Array[float] = [-0.18, 0.18]
@@ -31,32 +30,32 @@ var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
 var _held_finger_for_midi: Array[Dictionary] = [{}, {}]
 var _last_active_midi: Array[int] = [-1, -1]
 var _last_active_finger: Array[int] = [-1, -1]
+var _has_last_wrist_x: Array[bool] = [false, false]
+var _last_wrist_x: Array[float] = [DEFAULT_WRIST_X[0], DEFAULT_WRIST_X[1]]
 
 
-func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Array, notes: Array, note_cursor: int, playback_time: float, current_wrist_x: Array[float]) -> Array[HandPlan]:
+func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Array, notes: Array, note_cursor: int, playback_time: float, current_wrist_x: Array[float], anticipation_enabled: bool = true) -> Array[HandPlan]:
 	var active: Array[Array] = [[], []]
 	var upcoming: Array[Dictionary] = [{}, {}]
-	var idle_upcoming: Array[Dictionary] = [{}, {}]
 	for midi: int in range(21, 109):
 		var key_index: int = key_map.get_key_index(midi)
 		if key_index >= 0 and key_index < pressed.size() and pressed[key_index] != 0:
 			active[0 if midi < 60 else 1].append(midi)
-	for index: int in range(maxi(note_cursor, 0), notes.size()):
-		var note: Variant = notes[index]
-		var start: float = float(note.start)
-		if start > playback_time + IDLE_LOOKAHEAD_SEC:
-			break
-		if start <= playback_time:
-			continue
-		var midi: int = int(note.midi)
-		if midi < 21 or midi > 108:
-			continue
-		var side: int = 0 if midi < 60 else 1
-		if not idle_upcoming[side].has(midi) or start < float(idle_upcoming[side][midi]):
-			idle_upcoming[side][midi] = start
-		if start <= playback_time + LOOKAHEAD_SEC and not active[side].has(midi):
-			if not upcoming[side].has(midi) or start < float(upcoming[side][midi]):
-				upcoming[side][midi] = start
+	if anticipation_enabled:
+		for index: int in range(maxi(note_cursor, 0), notes.size()):
+			var note: Variant = notes[index]
+			var start: float = float(note.start)
+			if start > playback_time + LOOKAHEAD_SEC:
+				break
+			if start <= playback_time:
+				continue
+			var midi: int = int(note.midi)
+			if midi < 21 or midi > 108:
+				continue
+			var side: int = 0 if midi < 60 else 1
+			if not active[side].has(midi):
+				if not upcoming[side].has(midi) or start < float(upcoming[side][midi]):
+					upcoming[side][midi] = start
 	for side: int in range(2):
 		active[side].sort()
 	_rebalance_registers(active, upcoming, current_wrist_x)
@@ -66,7 +65,8 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		plan.side = side
 		var current_x: float = current_wrist_x[side] if side < current_wrist_x.size() else DEFAULT_WRIST_X[side]
 		current_x = clampf(current_x, WRIST_MIN_X, WRIST_MAX_X)
-		plan.wrist_target_x = current_x
+		var hold_x: float = clampf(_last_wrist_x[side] if _has_last_wrist_x[side] else current_x, WRIST_MIN_X, WRIST_MAX_X)
+		plan.wrist_target_x = hold_x
 		var has_active: bool = not active[side].is_empty()
 		var centroid: float = 0.0
 		var total_weight: float = 0.0
@@ -82,12 +82,6 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			total_weight += future_weight
 		if total_weight > 0.0:
 			plan.wrist_target_x = clampf(centroid / total_weight, WRIST_MIN_X, WRIST_MAX_X)
-		elif not idle_upcoming[side].is_empty():
-			var idle_centroid: float = 0.0
-			for midi: int in idle_upcoming[side]:
-				idle_centroid += key_map.get_key_rest_position(midi).x
-			idle_centroid /= float(idle_upcoming[side].size())
-			plan.wrist_target_x = clampf(lerpf(current_x, idle_centroid, 0.65), WRIST_MIN_X, WRIST_MAX_X)
 		for finger_index: int in range(5):
 			var assignment: FingerAssignment = FingerAssignment.new()
 			assignment.finger_index = finger_index
@@ -102,6 +96,7 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		var assigned_weight: float = 0.0
 		var highest_strike_midi: int = -1
 		var highest_strike_finger: int = -1
+		var min_time_until: float = LOOKAHEAD_SEC
 		for midi: int in strikes:
 			var finger: int = int(strikes[midi])
 			var assignment: FingerAssignment = plan.fingers[finger]
@@ -131,6 +126,7 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			assignment.midi = midi
 			assignment.state = FingerState.ANTICIPATING
 			var time_until: float = float(upcoming[side][midi]) - playback_time
+			min_time_until = minf(min_time_until, time_until)
 			assignment.weight = clampf(1.0 - time_until / LOOKAHEAD_SEC, 0.15, 1.0)
 			assignment.is_black = key_map.is_black_key(midi)
 			assignment.target_pos = key_map.get_hover_point(midi, finger == 0)
@@ -141,15 +137,24 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			anchor_sum += (key_map.get_key_rest_position(midi).x - offsets[finger] * (1.0 if has_active else 0.85)) * ant_anchor_weight
 			anchor_weight += ant_anchor_weight
 			next_retention[midi] = finger
-		if anchor_weight > 0.0:
-			plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
-		if plan.fingers[0].state == FingerState.STRIKING and plan.fingers[0].midi >= 21:
-			var thumb_ideal_x: float = key_map.get_key_rest_position(plan.fingers[0].midi).x - offsets[0]
-			plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.024, thumb_ideal_x + 0.024), WRIST_MIN_X, WRIST_MAX_X)
+		if has_active:
+			if anchor_weight > 0.0:
+				plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
+			if plan.fingers[0].state == FingerState.STRIKING and plan.fingers[0].midi >= 21:
+				var thumb_ideal_x: float = key_map.get_key_rest_position(plan.fingers[0].midi).x - offsets[0]
+				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.024, thumb_ideal_x + 0.024), WRIST_MIN_X, WRIST_MAX_X)
+			_last_wrist_x[side] = plan.wrist_target_x
+			_has_last_wrist_x[side] = true
+		elif anchor_weight > 0.0:
+			var upcoming_x: float = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
+			var approach_t: float = clampf(1.0 - min_time_until / LOOKAHEAD_SEC, 0.0, 1.0)
+			plan.wrist_target_x = clampf(lerpf(hold_x, upcoming_x, approach_t * approach_t), WRIST_MIN_X, WRIST_MAX_X)
+		else:
+			plan.wrist_target_x = hold_x
 		plan.black_ratio = black_weight / assigned_weight if assigned_weight > 0.0 else 0.0
 		_held_finger_for_midi[side] = strikes.duplicate()
 		_last_finger_for_midi[side] = next_retention
-		if active[side].is_empty() and upcoming[side].is_empty() and idle_upcoming[side].is_empty():
+		if active[side].is_empty() and upcoming[side].is_empty():
 			_last_finger_for_midi[side].clear()
 			_last_active_midi[side] = -1
 			_last_active_finger[side] = -1

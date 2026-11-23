@@ -57,7 +57,12 @@ func run() -> void:
 	await click(app.buttons.sustain)
 	check(app.sustain_enabled != previous, "Sustain toggles once per click")
 	await click(app.buttons.auto)
-	check(app.auto_enabled, "Auto starts by pointer")
+	check(app.auto_enabled and not app.bot_enabled, "Auto starts by pointer without enabling Bot")
+	check(app.creator_overlay.accent_pill.focus_mode == Control.FOCUS_NONE and app.creator_overlay.current_step_panel.focus_mode == Control.FOCUS_NONE, "Playback overlay panels never steal keyboard focus")
+	await click(app.creator_overlay.current_step_panel)
+	check(app.auto_enabled and not app.bot_enabled, "Clicking the active step capsule while in Auto mode does not trigger Bot")
+	await click(app.creator_overlay.accent_pill)
+	check(app.auto_enabled and not app.bot_enabled, "Clicking the accent pill while in Auto mode does not trigger Bot")
 	await click(app.buttons.auto)
 	check(not app.auto_enabled, "Auto pauses by pointer")
 	app.sheet_text_edit.text = ""

@@ -233,18 +233,23 @@ func _process(delta: float) -> void:
 
 func _update_playback_control() -> void:
 	var playing: bool = main_ref != null and main_ref.bot_enabled
+	var auto_active: bool = main_ref != null and main_ref.auto_enabled
 	if wave_badge != null:
 		wave_badge.visible = playing
 	if badge_icon != null:
 		badge_icon.visible = not playing
 		badge_icon.text = "▶"
 	if accent_pill != null:
-		accent_pill.tooltip_text = "Pausar reproducción (Ctrl+P o Clic)" if playing else "Reproducir canción (Ctrl+P o Clic)"
+		if auto_active:
+			accent_pill.tooltip_text = "Modo Auto activo · Pulsa teclas para avanzar"
+		else:
+			accent_pill.tooltip_text = "Pausar reproducción (Ctrl+P o Clic)" if playing else "Reproducir canción (Ctrl+P o Clic)"
+	if current_step_panel != null:
+		current_step_panel.tooltip_text = "Modo Auto activo · Pulsa teclas para avanzar" if auto_active else "Clic para Reproducir / Pausar"
 
 func _playback_control_input(event: InputEvent) -> void:
 	var clicked: bool = event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed
-	var activated: bool = event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ENTER or event.keycode == KEY_SPACE)
-	if (clicked or activated) and main_ref != null:
+	if clicked and main_ref != null and not main_ref.auto_enabled:
 		main_ref.toggle_bot_mode()
 		_update_playback_control()
 		get_viewport().set_input_as_handled()
@@ -311,7 +316,7 @@ func _build_branding_card() -> void:
 	accent_pill.name = "AccentPill"
 	accent_pill.mouse_filter = Control.MOUSE_FILTER_STOP
 	accent_pill.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	accent_pill.focus_mode = Control.FOCUS_ALL
+	accent_pill.focus_mode = Control.FOCUS_NONE
 	accent_pill.gui_input.connect(_playback_control_input)
 	accent_pill.custom_minimum_size = Vector2(36, 36)
 	accent_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -480,7 +485,7 @@ func _build_live_sheet_hud() -> void:
 	current_step_panel.name = "CurrentStepCapsule"
 	current_step_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	current_step_panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	current_step_panel.focus_mode = Control.FOCUS_ALL
+	current_step_panel.focus_mode = Control.FOCUS_NONE
 	current_step_panel.tooltip_text = "Clic para Reproducir / Pausar"
 	current_step_panel.gui_input.connect(_playback_control_input)
 	current_step_style = StyleBoxFlat.new()
