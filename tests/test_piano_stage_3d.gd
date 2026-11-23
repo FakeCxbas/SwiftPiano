@@ -18,6 +18,23 @@ func check(condition: bool, msg: String) -> void:
 		failures += 1
 		print("FAIL: ", msg)
 
+func _thumb_tip_stage_pos(stage: PianoStage3D, side: int) -> Vector3:
+	var skel: Skeleton3D = stage._skeletons[side]
+	var tip_idx: int = skel.find_bone("thumb-tip")
+	return stage.world_root.to_local(skel.to_global(skel.get_bone_pose_position(tip_idx)))
+
+func _thumb_segments_valid(stage: PianoStage3D, side: int) -> bool:
+	var skel: Skeleton3D = stage._skeletons[side]
+	var names: Array[String] = ["thumb-metacarpal", "thumb-phalanx-proximal", "thumb-phalanx-distal", "thumb-tip"]
+	for k: int in range(names.size() - 1):
+		var b0: int = skel.find_bone(names[k])
+		var b1: int = skel.find_bone(names[k + 1])
+		var d_rest: float = skel.get_bone_rest(b1).origin.distance_to(skel.get_bone_rest(b0).origin)
+		var d_pose: float = skel.get_bone_pose_position(b1).distance_to(skel.get_bone_pose_position(b0))
+		if absf(d_pose - d_rest) >= 0.001:
+			return false
+	return true
+
 func _run() -> void:
 	print("--- Running PianoStage3D Tests ---")
 	root.size = Vector2i(1920, 1080)
@@ -228,6 +245,51 @@ func _run() -> void:
 	check(stage.stage_viewport.msaa_3d == SubViewport.MSAA_4X, "SubViewport MSAA 4X active for clean finger silhouettes")
 	for _f in range(25):
 		stage._process(0.016)
+
+	# Thumb 3D contact precision, opposition adduction, and two-hand closing chord balance
+	var verify_thumb := func(label: String, chord: Array, side: int, expected_midi: int) -> void:
+		stage.release_all()
+		for _f in range(10):
+			stage._process(0.016)
+		for m: int in chord:
+			stage.press_key(m, Color.CYAN if m < 60 else Color.MAGENTA)
+		for _f in range(25):
+			stage._process(0.016)
+		var ch: HandIKController.FingerChain = stage.hand_controllers[side]._chains[0]
+		var target_pos: Vector3 = stage.key_map.get_strike_contact_point(expected_midi, stage._depth[expected_midi - 21], true)
+		var tip_pos: Vector3 = _thumb_tip_stage_pos(stage, side)
+		var err_m: float = tip_pos.distance_to(target_pos)
+		check(ch.last_state == FingeringSolver.FingerState.STRIKING and ch.last_midi == expected_midi, "%s assigns thumb to MIDI %d (got state=%d midi=%d)" % [label, expected_midi, ch.last_state, ch.last_midi])
+		check(err_m < 0.008, "%s 3D thumb-tip lands within 8mm of target key (err=%.2f mm, target=%s, actual=%s)" % [label, err_m * 1000.0, str(target_pos), str(tip_pos)])
+		check(_thumb_segments_valid(stage, side), "%s preserves invariant thumb phalanx lengths" % label)
+
+	verify_thumb.call("Right thumb white triad", [60, 64, 67], 1, 60)
+	verify_thumb.call("Right thumb black-key chord", [61, 65, 68, 73], 1, 61)
+	verify_thumb.call("Left thumb white triad", [48, 52, 55], 0, 55)
+	verify_thumb.call("Left thumb black-key chord", [44, 49, 53, 56], 0, 56)
+
+	# Closing chord spanning across C4 (La Campanella finale)
+	stage.release_all()
+	for _f in range(10):
+		stage._process(0.016)
+	var closing_chord: Array[int] = [56, 60, 63, 68, 80, 84, 87, 92]
+	for m: int in closing_chord:
+		stage.press_key(m, Color.RED)
+	for _f in range(30):
+		stage._process(0.016)
+	var lh_thumb: HandIKController.FingerChain = stage.hand_controllers[0]._chains[0]
+	var rh_thumb: HandIKController.FingerChain = stage.hand_controllers[1]._chains[0]
+	var lh_target: Vector3 = stage.key_map.get_strike_contact_point(68, stage._depth[68 - 21], true)
+	var rh_target: Vector3 = stage.key_map.get_strike_contact_point(80, stage._depth[80 - 21], true)
+	var lh_err: float = _thumb_tip_stage_pos(stage, 0).distance_to(lh_target)
+	var rh_err: float = _thumb_tip_stage_pos(stage, 1).distance_to(rh_target)
+	check(lh_thumb.last_midi == 68 and rh_thumb.last_midi == 80, "Wide closing chord rebalances across C4 so LH thumb hits 68 (got %d) and RH thumb hits 80 (got %d)" % [lh_thumb.last_midi, rh_thumb.last_midi])
+	check(lh_err < 0.008 and rh_err < 0.008, "Both thumbs physically land on wide closing chord keys (LH=%.2fmm, RH=%.2fmm)" % [lh_err * 1000.0, rh_err * 1000.0])
+
+	stage.release_all()
+	for _f in range(35):
+		stage._process(0.016)
+	check(lh_thumb.last_state == FingeringSolver.FingerState.IDLE and rh_thumb.last_state == FingeringSolver.FingerState.IDLE and lh_thumb.root_offset.length() < 0.002 and rh_thumb.root_offset.length() < 0.002, "Thumbs return cleanly to IDLE dome with root_offset near zero after closing release")
 
 	# Test Main scene integration
 	var app = MainScene.instantiate()
