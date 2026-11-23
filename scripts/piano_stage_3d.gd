@@ -36,6 +36,7 @@ var _rest: Array[Vector3] = []
 var _pressed: PackedByteArray = PackedByteArray()
 var _depth: PackedFloat32Array = PackedFloat32Array()
 var _energy: PackedFloat32Array = PackedFloat32Array()
+var _strike_serial: PackedInt32Array = PackedInt32Array()
 var _hands: Array[Node3D] = []
 var _skeletons: Array[Skeleton3D] = []
 var key_map: KeyMap3D = KeyMap3DClass.new()
@@ -157,6 +158,7 @@ func _build_keyboard() -> void:
 	_pressed.resize(88)
 	_depth.resize(88)
 	_energy.resize(88)
+	_strike_serial.resize(88)
 	for midi in range(21, 109):
 		var black: bool = _is_black(midi)
 		var material: StandardMaterial3D = _material(Color("171822") if black else Color("f4f1ea"), 0.25 if black else 0.24, 0.68 if black else 0.55)
@@ -218,6 +220,8 @@ func press_key(midi: int, color: Color) -> void:
 	if index < 0 or index >= _keys.size():
 		return
 	_pressed[index] = 1
+	_depth[index] = minf(_depth[index], 0.35)
+	_strike_serial[index] += 1
 	_energy[index] = 2.0
 	_key_materials[index].emission = color
 
@@ -290,12 +294,14 @@ func _process(delta: float) -> void:
 	_update_cascade()
 
 func _update_hands(delta: float) -> void:
+	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
+		_note_cursor += 1
 	var wrists: Array[float] = []
 	for hand: Node3D in _hands:
 		wrists.append(hand.position.x)
 	var plans: Array[FingeringSolver.HandPlan] = fingering_solver.solve(key_map, _pressed, _depth, _notes, _note_cursor, _playback_time, wrists)
 	for side: int in range(hand_controllers.size()):
-		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time)
+		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time, _strike_serial)
 
 func _update_cascade() -> void:
 	if world_root == null or _bar_shader == null:
