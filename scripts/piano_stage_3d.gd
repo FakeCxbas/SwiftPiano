@@ -75,13 +75,13 @@ func _ready() -> void:
 	var environment: Environment = Environment.new()
 	environment.background_mode = Environment.BG_CLEAR_COLOR
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("181c2b")
-	environment.ambient_light_energy = 0.14
+	environment.ambient_light_color = Color("242838")
+	environment.ambient_light_energy = 0.18
 	environment_node.environment = environment
 	world_root.add_child(environment_node)
 	var light: DirectionalLight3D = DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-58.0, -22.0, 0.0)
-	light.light_energy = 0.65
+	light.light_energy = 0.78
 	world_root.add_child(light)
 	var rim: DirectionalLight3D = DirectionalLight3D.new()
 	rim.name = "HandRimLight"
@@ -94,8 +94,8 @@ func _ready() -> void:
 	for side in range(2):
 		var hand_light: OmniLight3D = OmniLight3D.new()
 		hand_light.name = "LeftKeyLight" if side == 0 else "RightKeyLight"
-		hand_light.position = Vector3(-0.18 if side == 0 else 0.18, 0.14, -0.015)
-		hand_light.omni_range = 0.36
+		hand_light.position = Vector3(-0.18 if side == 0 else 0.18, 0.065, -0.020)
+		hand_light.omni_range = 0.30
 		hand_light.light_energy = 0.0
 		world_root.add_child(hand_light)
 		_hand_lights.append(hand_light)
@@ -180,7 +180,7 @@ func _build_hands() -> void:
 		# +90 degrees maps the negative-Y fingers toward the piano's -Z;
 		# original positive-Z palm surface faces down toward the key tops.
 		hand.rotation.x = PI * 0.5
-		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.072, 0.192)
+		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.079, 0.184)
 		hand.visible = _hands_enabled
 		_apply_hand_material(hand)
 		_hands.append(hand)
@@ -333,7 +333,12 @@ func _update_hand_lights(damping: float) -> void:
 		var tint: Color = Color(0.0, 0.0, 0.0, 0.0)
 		var count: int = 0
 		for index in range(_pressed.size()):
-			if _pressed[index] != 0 and (0 if index + 21 < 60 else 1) == side:
+			if _pressed[index] == 0:
+				continue
+			var owner_side: int = 0 if index + 21 < 60 else 1
+			if _hands.size() == 2:
+				owner_side = 0 if absf(_rest[index].x - _hands[0].position.x) <= absf(_rest[index].x - _hands[1].position.x) else 1
+			if owner_side == side:
 				tint += _key_materials[index].emission
 				count += 1
 		if side < _hands.size():
@@ -341,5 +346,6 @@ func _update_hand_lights(damping: float) -> void:
 		if count > 0:
 			tint /= float(count)
 			tint.a = 1.0
+			tint = tint.lerp(Color(1.0, 0.96, 0.92, 1.0), 0.45)
 			light.light_color = light.light_color.lerp(tint, damping)
-		light.light_energy = lerpf(light.light_energy, minf(2.2, 0.9 + 0.3 * count) if count > 0 else 0.0, damping)
+		light.light_energy = lerpf(light.light_energy, minf(0.55, 0.22 + 0.08 * float(count)) if count > 0 else 0.0, damping)

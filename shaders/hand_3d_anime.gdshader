@@ -20,14 +20,17 @@ void fragment() {
 
 void light() {
 	float ndotl = dot(NORMAL, LIGHT);
-	// Soft bands retain the anime silhouette while following cylindrical fingers.
-	float diffuse = max(ndotl, 0.0);
-	float band = smoothstep(0.02, 0.42, ndotl);
+	// Soft bands retain anatomical volume across cylindrical phalanges without double-multiplying ALBEDO.
+	float wrapped = clamp((ndotl + 0.25) / 1.25, 0.0, 1.0);
+	float band = smoothstep(0.05, 0.55, ndotl);
 	vec3 shadow_ratio = u_shadow_color.rgb / max(u_skin_color.rgb, vec3(0.001));
 	vec3 tint = mix(shadow_ratio, vec3(1.0), band);
-	DIFFUSE_LIGHT += ALBEDO * tint * diffuse * LIGHT_COLOR * ATTENUATION / PI;
+	float luma = dot(LIGHT_COLOR, vec3(0.299, 0.587, 0.114));
+	vec3 balanced_light = mix(vec3(luma), LIGHT_COLOR, 0.28);
+	DIFFUSE_LIGHT += tint * wrapped * balanced_light * ATTENUATION;
 	vec3 half_vector = normalize(VIEW + LIGHT);
-	float gloss = pow(max(dot(NORMAL, half_vector), 0.0), mix(28.0, 72.0, nail_mask));
-	float strength = mix(0.06, u_nail_specular * 0.24, nail_mask);
-	SPECULAR_LIGHT += gloss * strength * diffuse * LIGHT_COLOR * ATTENUATION;
+	float gloss = pow(max(dot(NORMAL, half_vector), 0.0), mix(26.0, 68.0, nail_mask));
+	float fresnel = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0) * 0.14;
+	float strength = mix(0.05, u_nail_specular * 0.22, nail_mask);
+	SPECULAR_LIGHT += (gloss * strength * max(ndotl, 0.0) + fresnel) * balanced_light * ATTENUATION;
 }

@@ -49,8 +49,8 @@ func get_key_pressed_transform(midi: int, depth_01: float) -> Transform3D:
 func get_strike_contact_point(midi: int, depth_01: float, is_thumb: bool = false) -> Vector3:
 	var rest: Vector3 = get_key_rest_position(midi)
 	if is_black_key(midi):
-		return Vector3(rest.x, 0.043 - depth_01 * 0.009, -0.010)
-	return Vector3(rest.x, 0.011 - depth_01 * 0.007, 0.050 if is_thumb else 0.034)
+		return Vector3(rest.x, 0.041 - depth_01 * 0.009, -0.012)
+	return Vector3(rest.x, 0.009 - depth_01 * 0.007, 0.048 if is_thumb else 0.033)
 
 func get_hover_point(midi: int, is_thumb: bool = false) -> Vector3:
-	return get_strike_contact_point(midi, 0.0, is_thumb) + Vector3(0.0, 0.014, 0.003)
+	return get_strike_contact_point(midi, 0.0, is_thumb) + Vector3(0.0, 0.016, 0.002)

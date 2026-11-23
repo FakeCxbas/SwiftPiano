@@ -132,6 +132,56 @@ func _run() -> void:
 	for _f in range(25):
 		stage._process(0.016)
 
+	# Biomechanical refinement regression: curl depth, lateral range, 60-frame continuity, lighting balance
+	var hc_r: HandIKController = stage.hand_controllers[1]
+	var rest_curl_sum: float = 0.0
+	var white_curl_sum: float = 0.0
+	var black_curl_sum: float = 0.0
+	for j: int in range(1, 4):
+		rest_curl_sum += -hc_r._finger_angles(2, false, false)[j]
+		white_curl_sum += -hc_r._finger_angles(2, true, false)[j]
+		black_curl_sum += -hc_r._finger_angles(2, true, true)[j]
+	check(white_curl_sum > rest_curl_sum + 12.0 and black_curl_sum > rest_curl_sum + 2.0, "STRIKING flexion exceeds IDLE dome curl on both white and black keys")
+
+	var continuity_ok: bool = true
+	var max_wrist_step: float = 0.0
+	var max_light_energy: float = 0.0
+	var chord_seq: Array = [[25, 28, 32], [103, 106, 108], [61, 66, 70], [42, 46, 51], [85, 90, 97]]
+	var prev_wx: Array[float] = [stage._hands[0].position.x, stage._hands[1].position.x]
+	for frame_idx: int in range(60):
+		if frame_idx % 12 == 0:
+			stage.release_all()
+			var grp: Array = chord_seq[int(frame_idx / 12) % chord_seq.size()]
+			for n_midi: int in grp:
+				stage.press_key(n_midi, Color.RED if n_midi >= 60 else Color.CYAN)
+		stage._process(0.016)
+		for side_i: int in range(2):
+			max_wrist_step = maxf(max_wrist_step, absf(stage._hands[side_i].position.x - prev_wx[side_i]))
+			prev_wx[side_i] = stage._hands[side_i].position.x
+			max_light_energy = maxf(max_light_energy, stage._hand_lights[side_i].light_energy)
+			var sk_i: Skeleton3D = stage._skeletons[side_i]
+			for f_name: String in ["index", "middle", "ring", "pinky"]:
+				var b_names: Array[String] = [f_name + "-finger-phalanx-proximal", f_name + "-finger-phalanx-intermediate", f_name + "-finger-phalanx-distal", f_name + "-finger-tip"]
+				for k: int in range(3):
+					var bi0: int = sk_i.find_bone(b_names[k])
+					var bi1: int = sk_i.find_bone(b_names[k + 1])
+					var d_rest: float = sk_i.get_bone_rest(bi1).origin.distance_to(sk_i.get_bone_rest(bi0).origin)
+					var d_pose: float = sk_i.get_bone_pose_position(bi1).distance_to(sk_i.get_bone_pose_position(bi0))
+					if absf(d_pose - d_rest) > 0.001:
+						continuity_ok = false
+	check(continuity_ok, "60-frame rapid octave jumps & black chords preserve all phalanx bone lengths within 1mm")
+	check(max_wrist_step < 0.05, "Rapid octave jumps interpolate smoothly without abrupt per-frame teleport steps")
+	check(max_light_energy <= 0.56, "Hand reactive OmniLight3D stays balanced and capped below saturation")
+
+	stage.release_all()
+	stage.press_key(105, Color.RED)
+	for _f in range(35):
+		stage._process(0.016)
+	check(stage._hands[1].position.x > 0.45, "Right wrist decisively tracks high-register outer keys")
+	stage.release_all()
+	for _f in range(20):
+		stage._process(0.016)
+
 	# Test Main scene integration
 	var app = MainScene.instantiate()
 	root.add_child(app)
