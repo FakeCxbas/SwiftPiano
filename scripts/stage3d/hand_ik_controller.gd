@@ -13,14 +13,15 @@ class FingerChain extends RefCounted:
 	var splay: float = 0.0
 	var last_midi: int = -1
 	var last_state: int = 0
+	var last_strike_serial: int = -1
 	var strike_impulse: float = 0.0
 	var release_rebound: float = 0.0
 	var black_blend: float = 0.0
 	var root_offset: Vector3 = Vector3.ZERO
 
 const FINGER_NAMES: Array[String] = ["thumb", "index", "middle", "ring", "pinky"]
-const REST_SPLAY_LEFT: Array[float] = [-0.34, -0.018, 0.0, 0.018, 0.040]
-const REST_SPLAY_RIGHT: Array[float] = [0.34, 0.018, 0.0, -0.018, -0.040]
+const REST_SPLAY_LEFT: Array[float] = [-0.52, -0.018, 0.0, 0.018, 0.040]
+const REST_SPLAY_RIGHT: Array[float] = [0.52, 0.018, 0.0, -0.018, -0.040]
 const ATTACK_SPEED: float = 38.0
 const ANTICIPATION_SPEED: float = 16.0
 const RELEASE_SPEED: float = 11.0
@@ -74,15 +75,37 @@ func setup(hand_side: int, hand_node: Node3D, skel: Skeleton3D, marker_parent: N
 		markers.append(marker)
 		_apply_finger_fk(chain)
 
-func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float, elapsed_time: float) -> void:
+func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float, elapsed_time: float, strike_serial: PackedInt32Array = PackedInt32Array()) -> void:
 	var step: float = maxf(delta, 0.0)
 	var wrist_damping: float = 1.0 - exp(-WRIST_SPEED * step)
+	var max_imp: float = 0.0
+	var max_reb: float = 0.0
+	for finger: int in range(_chains.size()):
+		var chain: FingerChain = _chains[finger]
+		var assignment: FingeringSolver.FingerAssignment = plan.fingers[finger]
+		var striking: bool = assignment.state == FingeringSolver.FingerState.STRIKING
+		var curr_serial: int = strike_serial[assignment.midi - 21] if (striking and assignment.midi >= 21 and assignment.midi - 21 < strike_serial.size()) else -1
+		if striking and (chain.last_state != FingeringSolver.FingerState.STRIKING or chain.last_midi != assignment.midi or (curr_serial >= 0 and curr_serial != chain.last_strike_serial)):
+			chain.strike_impulse = 1.0
+			chain.release_rebound = 0.0
+		elif not striking and chain.last_state == FingeringSolver.FingerState.STRIKING:
+			chain.release_rebound = 1.0
+			chain.strike_impulse = 0.0
+		chain.strike_impulse *= exp(-13.0 * step)
+		chain.release_rebound *= exp(-11.0 * step)
+		if striking:
+			chain.last_strike_serial = curr_serial
+		chain.last_state = assignment.state
+		chain.last_midi = assignment.midi
+		max_imp = maxf(max_imp, chain.strike_impulse)
+		max_reb = maxf(max_reb, chain.release_rebound)
 	var ratio: float = clampf(plan.black_ratio, 0.0, 1.0)
 	var target_y: float = lerpf(0.078, 0.086, ratio)
 	if plan.active_count > 0 and ratio < 0.5:
 		target_y = 0.072
 	if plan.active_count == 0:
 		target_y += sin(elapsed_time * 2.1 + float(side) * 1.3) * 0.0012
+	target_y += -0.0035 * max_imp + 0.003 * max_reb
 	var target_x: float = plan.wrist_target_x
 	var prev_x: float = hand_root.position.x
 	var x_speed: float = lerpf(WRIST_SPEED, ATTACK_SPEED, clampf(absf(target_x - prev_x) / 0.14, 0.0, 1.0))
@@ -123,16 +146,6 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 		var assignment: FingeringSolver.FingerAssignment = plan.fingers[finger]
 		var striking: bool = assignment.state == FingeringSolver.FingerState.STRIKING
 		var anticipating: bool = assignment.state == FingeringSolver.FingerState.ANTICIPATING
-		if striking and (chain.last_state != FingeringSolver.FingerState.STRIKING or chain.last_midi != assignment.midi):
-			chain.strike_impulse = 1.0
-			chain.release_rebound = 0.0
-		elif not striking and not anticipating and chain.last_state == FingeringSolver.FingerState.STRIKING:
-			chain.release_rebound = 1.0
-			chain.strike_impulse = 0.0
-		chain.strike_impulse *= exp(-13.0 * step)
-		chain.release_rebound *= exp(-11.0 * step)
-		chain.last_state = assignment.state
-		chain.last_midi = assignment.midi
 		var rate: float = ATTACK_SPEED if striking else (ANTICIPATION_SPEED if anticipating else RELEASE_SPEED)
 		var damping: float = 1.0 - exp(-rate * step)
 		chain.black_blend = lerpf(chain.black_blend, 1.0 if ((striking or anticipating) and assignment.is_black) else 0.0, damping)
@@ -146,46 +159,69 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 			if targets.size() > 2:
 				targets[2] -= 4.0 * chain.strike_impulse
 		elif anticipating:
-			targets[0] += 8.0 * assignment.weight
-			targets[1] += 12.0 * assignment.weight
+			var lift: float = maxf(assignment.weight, chain.release_rebound)
+			targets[0] += 5.0 * lift
+			targets[1] += 6.5 * lift
 			if targets.size() > 2:
-				targets[2] += 4.0 * assignment.weight
-		elif chain.release_rebound > 0.01:
-			targets[0] += 6.0 * chain.release_rebound
-			targets[1] += 9.0 * chain.release_rebound
-		elif _has_striking_neighbor(plan, finger):
-			targets[1] += 3.0
+				targets[2] -= 2.0 * lift
+			if targets.size() > 3:
+				targets[3] -= 2.0 * lift
+		else:
+			if chain.release_rebound > 0.01:
+				targets[0] += 6.0 * chain.release_rebound
+				targets[1] += 9.0 * chain.release_rebound
+			elif _has_striking_neighbor(plan, finger):
+				targets[1] += 3.0
+			var breath: float = sin(elapsed_time * 2.6 + float(finger) * 0.85 + float(side) * 1.4) * 1.2
+			targets[1] += breath
+			if targets.size() > 2:
+				targets[2] += breath * 0.8
 		for joint: int in range(chain.angles.size()):
 			chain.angles[joint] = lerpf(chain.angles[joint], targets[joint], damping)
 		var target_splay: float = rest_splays[finger]
+		var thumb_rest_x: float = 0.045 if side == 0 else -0.045
+		var desired_for_splay: Vector3 = Vector3.ZERO
 		if striking or anticipating:
-			var marker_local: Vector3 = hand_inv * _world_to_stage(markers[finger].global_position)
+			desired_for_splay = hand_inv * (assignment.target_pos if striking else _world_to_stage(markers[finger].global_position))
 			if finger == 0:
-				var thumb_rest_x: float = 0.052 if side == 0 else -0.052
-				target_splay = clampf(rest_splays[0] + (marker_local.x - thumb_rest_x) * 6.5, -0.62, 0.62)
+				target_splay = clampf(rest_splays[0] + (desired_for_splay.x - thumb_rest_x) * 7.2, -0.75, 0.75)
 			else:
-				target_splay = clampf((marker_local.x - chain.rest_tip.x) * 5.2, -0.32, 0.32)
+				target_splay = clampf((desired_for_splay.x - chain.rest_tip.x) * 5.2, -0.32, 0.32)
 		chain.splay = lerpf(chain.splay, target_splay, damping)
 		var target_root_offset: Vector3 = Vector3.ZERO
-		if striking or anticipating:
-			var desired_stage: Vector3 = assignment.target_pos if striking else _world_to_stage(markers[finger].global_position)
-			var desired_local: Vector3 = hand_inv * desired_stage
-			var unoffset_tip: Vector3 = _unoffset_tip_local(chain, chain.angles, chain.splay)
-			var delta_local: Vector3 = desired_local - unoffset_tip
-			if finger == 0:
+		if finger == 0:
+			if striking:
+				var desired_local: Vector3 = hand_inv * assignment.target_pos
+				var unoffset_tip: Vector3 = _unoffset_tip_local(chain, chain.angles, chain.splay)
+				var delta_local: Vector3 = desired_local - unoffset_tip
 				target_root_offset = Vector3(
-					clampf(delta_local.x, -0.032, 0.032),
-					clampf(delta_local.y, -0.045, 0.020),
+					clampf(delta_local.x, -0.034, 0.034),
+					clampf(delta_local.y, -0.046, 0.020),
 					clampf(delta_local.z, -0.025, 0.028)
 				)
-			else:
+			elif anticipating:
+				var lift_t: float = maxf(assignment.weight, chain.release_rebound)
 				target_root_offset = Vector3(
-					clampf(delta_local.x, -0.018, 0.018),
-					clampf(delta_local.y, -0.028, 0.014),
-					clampf(delta_local.z, -0.016, 0.018)
+					clampf(desired_for_splay.x - thumb_rest_x, -0.018, 0.018),
+					-0.008 - 0.010 * chain.black_blend,
+					-0.004 * lift_t
 				)
+			else:
+				target_root_offset = Vector3(0.0, -0.008, -0.004 * chain.release_rebound)
 		else:
-			target_root_offset = Vector3(0.0, -0.003 * chain.release_rebound, -0.0045 * chain.release_rebound)
+			if striking:
+				var desired_local: Vector3 = hand_inv * assignment.target_pos
+				var unoffset_tip: Vector3 = _unoffset_tip_local(chain, chain.angles, chain.splay)
+				var delta_local: Vector3 = desired_local - unoffset_tip
+				var z_off: float = clampf(delta_local.z, -0.005, 0.014) if assignment.is_black else (0.002 + 0.0035 * chain.strike_impulse)
+				target_root_offset = Vector3(
+					clampf(delta_local.x, -0.016, 0.016),
+					clampf(delta_local.y, -0.028, 0.010),
+					z_off
+				)
+			else:
+				var prep_lift: float = maxf(assignment.weight if anticipating else 0.0, chain.release_rebound)
+				target_root_offset = Vector3(0.0, -0.014 * chain.black_blend - 0.003 * prep_lift, -0.0045 * prep_lift)
 		chain.root_offset = chain.root_offset.lerp(target_root_offset, damping)
 		_apply_finger_fk(chain)
 
@@ -205,21 +241,21 @@ func _world_to_stage(point: Vector3) -> Vector3:
 
 func _idle_target(chain: FingerChain) -> Vector3:
 	if chain.finger_name == "thumb":
-		return hand_root.position + Vector3(0.052 if side == 0 else -0.052, -0.042, -0.106)
+		return hand_root.position + Vector3(0.045 if side == 0 else -0.045, -0.048, -0.114)
 	return hand_root.position + Vector3(chain.rest_tip.x, -0.044, -0.140)
 
 func _finger_angles(finger: int, striking: bool, black: bool) -> PackedFloat32Array:
 	match finger:
 		0:
-			return PackedFloat32Array(([2.0, -5.0, -7.0] if black else [-4.0, -10.0, -12.0]) if striking else [8.0, 4.0, 2.0])
+			return PackedFloat32Array(([-2.0, -10.0, -12.0] if black else [-8.0, -16.0, -16.0]) if striking else [2.0, -4.0, -5.0])
 		1:
-			return PackedFloat32Array(([1.0, -19.0, -21.0, -14.0] if black else [-4.0, -27.0, -25.0, -16.0]) if striking else [5.0, -14.0, -18.0, -12.0])
+			return PackedFloat32Array(([1.0, -24.0, -26.0, -18.0] if black else [-4.0, -29.0, -28.0, -19.0]) if striking else [3.0, -19.0, -25.0, -17.0])
 		2:
-			return PackedFloat32Array(([1.0, -20.0, -22.0, -14.0] if black else [-4.0, -28.0, -26.0, -17.0]) if striking else [5.0, -15.0, -20.0, -13.0])
+			return PackedFloat32Array(([1.0, -25.0, -27.0, -18.0] if black else [-4.0, -30.0, -29.0, -20.0]) if striking else [3.0, -20.0, -27.0, -18.0])
 		3:
-			return PackedFloat32Array(([1.0, -19.0, -21.0, -14.0] if black else [-4.0, -27.0, -25.0, -16.0]) if striking else [5.0, -15.0, -19.0, -12.0])
+			return PackedFloat32Array(([1.0, -24.0, -26.0, -18.0] if black else [-4.0, -29.0, -28.0, -19.0]) if striking else [3.0, -19.0, -26.0, -17.0])
 		_:
-			return PackedFloat32Array(([2.0, -17.0, -19.0, -12.0] if black else [-3.0, -25.0, -23.0, -15.0]) if striking else [6.0, -13.0, -17.0, -11.0])
+			return PackedFloat32Array(([2.0, -22.0, -24.0, -16.0] if black else [-3.0, -27.0, -26.0, -18.0]) if striking else [4.0, -17.0, -24.0, -16.0])
 
 func _thumb_axis() -> Vector3:
 	return Vector3(1.0, 0.35 if side == 0 else -0.35, 0.0).normalized()

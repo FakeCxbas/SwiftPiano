@@ -267,6 +267,8 @@ func _run() -> void:
 	verify_thumb.call("Right thumb black-key chord", [61, 65, 68, 73], 1, 61)
 	verify_thumb.call("Left thumb white triad", [48, 52, 55], 0, 55)
 	verify_thumb.call("Left thumb black-key chord", [44, 49, 53, 56], 0, 56)
+	verify_thumb.call("Left thumb black-top triad", [48, 51, 54], 0, 54)
+	verify_thumb.call("Left thumb 2-note third", [54, 57], 0, 57)
 
 	# Closing chord spanning across C4 (La Campanella finale)
 	stage.release_all()
@@ -289,7 +291,77 @@ func _run() -> void:
 	stage.release_all()
 	for _f in range(35):
 		stage._process(0.016)
-	check(lh_thumb.last_state == FingeringSolver.FingerState.IDLE and rh_thumb.last_state == FingeringSolver.FingerState.IDLE and lh_thumb.root_offset.length() < 0.002 and rh_thumb.root_offset.length() < 0.002, "Thumbs return cleanly to IDLE dome with root_offset near zero after closing release")
+	check(lh_thumb.last_state == FingeringSolver.FingerState.IDLE and rh_thumb.last_state == FingeringSolver.FingerState.IDLE and absf(lh_thumb.root_offset.x) < 0.002 and absf(rh_thumb.root_offset.x) < 0.002 and lh_thumb.root_offset.length() < 0.01 and rh_thumb.root_offset.length() < 0.01, "Thumbs return cleanly to IDLE dome after closing release")
+
+	# Waltz liveness: single-note melody tracking, bass-chord stride, anticipation dome, and re-strike rebound
+	stage.release_all()
+	var mel_xs: Array[float] = []
+	for m: int in [72, 76, 80, 84]:
+		stage.release_all()
+		stage.press_key(m, Color.CYAN)
+		for _f in range(12):
+			stage._process(0.016)
+		mel_xs.append(stage._hands[1].position.x)
+	check(mel_xs[3] > mel_xs[0] + 0.14 and mel_xs[2] > mel_xs[1] + 0.02, "Single-note melody moves RH wrist continuously without self-locking (%0.3f -> %0.3f)" % [mel_xs[0], mel_xs[3]])
+
+	stage.release_all()
+	stage.press_key(45, Color.CYAN)
+	for _f in range(12):
+		stage._process(0.016)
+	var bass_x: float = stage._hands[0].position.x
+	stage.release_all()
+	for m: int in [48, 52, 55]:
+		stage.press_key(m, Color.CYAN)
+	for _f in range(12):
+		stage._process(0.016)
+	var triad_x: float = stage._hands[0].position.x
+	check(triad_x > bass_x + 0.06, "Left-hand waltz bass -> triad stride moves LH wrist decisively (%0.3f -> %0.3f)" % [bass_x, triad_x])
+
+	var struck_52: HandIKController.FingerChain = null
+	for ch: HandIKController.FingerChain in stage.hand_controllers[0]._chains:
+		if ch.last_midi == 52 and ch.last_state == FingeringSolver.FingerState.STRIKING:
+			struck_52 = ch
+			break
+	check(struck_52 != null, "Left hand assigns a striking finger to MIDI 52 in [48, 52, 55]")
+
+	var waltz_repeat: Array[PianoStage3D.StageNote] = [
+		PianoStage3D.StageNote.new(48, 0.25, 0.20, Color.CYAN),
+		PianoStage3D.StageNote.new(52, 0.25, 0.20, Color.CYAN),
+		PianoStage3D.StageNote.new(55, 0.25, 0.20, Color.CYAN),
+		PianoStage3D.StageNote.new(48, 0.50, 0.20, Color.CYAN),
+		PianoStage3D.StageNote.new(52, 0.50, 0.20, Color.CYAN),
+		PianoStage3D.StageNote.new(55, 0.50, 0.20, Color.CYAN)
+	]
+	stage.set_notes(waltz_repeat)
+	stage.set_playback_time(0.40)
+	stage.release_all()
+	stage._process(0.016)
+	check(struck_52 != null and struck_52.release_rebound > 0.5, "Releasing chord into anticipation of next beat still triggers release_rebound")
+	for _f in range(5):
+		stage._process(0.016)
+	var ant_chain: HandIKController.FingerChain = null
+	for fi: int in range(1, 5):
+		var ch: HandIKController.FingerChain = stage.hand_controllers[0]._chains[fi]
+		if ch.last_state == FingeringSolver.FingerState.ANTICIPATING:
+			ant_chain = ch
+			break
+	var ant_curl_sum: float = (ant_chain.angles[1] + ant_chain.angles[2] + ant_chain.angles[3]) if ant_chain != null else 0.0
+	check(ant_chain != null and ant_curl_sum < -40.0, "Anticipating fingers maintain natural curved dome (curl sum=%0.1f deg)" % ant_curl_sum)
+	stage.set_playback_time(0.51)
+	for m: int in [48, 52, 55]:
+		stage.press_key(m, Color.CYAN)
+	stage._process(0.016)
+	var restruck_any: bool = false
+	for ch: HandIKController.FingerChain in stage.hand_controllers[0]._chains:
+		if ch.last_midi == 52 and ch.strike_impulse > 0.5:
+			restruck_any = true
+			break
+	check(restruck_any and stage._note_cursor >= 3, "Re-striking repeated chord triggers strike_impulse and advances _note_cursor")
+	var cleared_notes: Array[PianoStage3D.StageNote] = []
+	stage.set_notes(cleared_notes)
+	stage.release_all()
+	for _f in range(25):
+		stage._process(0.016)
 
 	# Test Main scene integration
 	var app = MainScene.instantiate()
