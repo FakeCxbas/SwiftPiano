@@ -242,7 +242,7 @@ func _build_hands() -> void:
 		# +90 degrees maps the negative-Y fingers toward the piano's -Z;
 		# original positive-Z palm surface faces down toward the key tops.
 		hand.rotation.x = PI * 0.5
-		hand.position = Vector3(-0.18 if side == 0 else 0.18, 0.078, 0.172)
+		hand.position = Vector3(-0.18 if side == 0 else 0.18, HandIKControllerClass.WHITE_REST_Y, HandIKControllerClass.WHITE_REST_Z)
 		hand.visible = _hands_enabled
 		_apply_hand_material(hand)
 		_hands.append(hand)
@@ -396,7 +396,7 @@ func _update_hands(delta: float) -> void:
 		wrists.append(hand.position.x)
 	var plans: Array[FingeringSolver.HandPlan] = fingering_solver.solve(key_map, _pressed, _depth, _notes, _note_cursor, _playback_time, wrists, _anticipation_enabled)
 	for side: int in range(hand_controllers.size()):
-		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time, _strike_serial)
+		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time, _strike_serial, _depth)
 
 func _update_cascade() -> void:
 	if world_root == null or _bar_shader == null:
