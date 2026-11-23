@@ -20,6 +20,11 @@ var key_range_mode: String = "full_88"
 var visible_midi_range: Vector2i = Vector2i(21, 108)
 var shorts_mode: bool = false
 var horizontal_bounds: Vector2 = Vector2.ZERO
+var draw_2d_keys: bool = true:
+	set(val):
+		draw_2d_keys = val
+		_sync_hand_mesh_visibility()
+		queue_redraw()
 
 var hand_left_tex: Texture2D = preload("res://assets/hands/hand_left.png")
 var hand_right_tex: Texture2D = preload("res://assets/hands/hand_right.png")
@@ -292,8 +297,8 @@ func _setup_anime_hand_nodes() -> void:
 	_sync_hand_mesh_visibility()
 
 func _sync_hand_mesh_visibility() -> void:
-	var show_2d = anime_hands_enabled and (hands_mode == "2d")
-	var show_3d = anime_hands_enabled and (hands_mode == "3d")
+	var show_2d: bool = draw_2d_keys and anime_hands_enabled and (hands_mode == "2d")
+	var show_3d: bool = draw_2d_keys and anime_hands_enabled and (hands_mode == "3d")
 	
 	if left_hand_mesh_node != null:
 		left_hand_mesh_node.visible = show_2d
@@ -688,6 +693,9 @@ func release(midi: int) -> void:
 	_request_render()
 
 func _draw() -> void:
+	if not draw_2d_keys:
+		_sync_hand_mesh_transforms()
+		return
 	# 0. Wooden Keybed Frame Background (recess behind the keys)
 	draw_rect(Rect2(0, 0, size.x, size.y), Color("#060a10"))
 	
