@@ -35,6 +35,27 @@ func _thumb_segments_valid(stage: PianoStage3D, side: int) -> bool:
 			return false
 	return true
 
+func _min_finger_clearance(stage: PianoStage3D, side: int) -> float:
+	var skel: Skeleton3D = stage._skeletons[side]
+	var min_clr: float = INF
+	var specs: Array = [
+		["thumb-phalanx-distal", "thumb-tip"],
+		["index-finger-phalanx-distal", "index-finger-tip"],
+		["middle-finger-phalanx-distal", "middle-finger-tip"],
+		["ring-finger-phalanx-distal", "ring-finger-tip"],
+		["pinky-finger-phalanx-distal", "pinky-finger-tip"]
+	]
+	for pair: Array in specs:
+		for j: int in range(pair.size()):
+			var b_idx: int = skel.find_bone(str(pair[j]))
+			if b_idx < 0:
+				continue
+			var p_stage: Vector3 = stage.world_root.to_local(skel.to_global(skel.get_bone_pose_position(b_idx)))
+			var j_front: float = KeyMap3D.FINGER_TIP_FORWARD if j == pair.size() - 1 else 0.006
+			var ceiling: float = stage.key_map.get_surface_ceiling_y(p_stage.x, p_stage.z, stage._depth, KeyMap3D.FINGER_HALF_WIDTH, j_front, 0.006)
+			min_clr = minf(min_clr, p_stage.y - (ceiling + KeyMap3D.FINGER_PAD_RADIUS))
+	return min_clr
+
 func _run() -> void:
 	print("--- Running PianoStage3D Tests ---")
 	root.size = Vector2i(1920, 1080)
@@ -52,6 +73,9 @@ func _run() -> void:
 	check(stage._keys.size() == 88, "88 3D keys generated")
 	check(stage._hands.size() == 2, "2 3D hands instantiated")
 	check(stage._skeletons.size() == 2, "2 3D skeletons tracked")
+	var init_clr_l: float = _min_finger_clearance(stage, 0)
+	var init_clr_r: float = _min_finger_clearance(stage, 1)
+	check(init_clr_l >= -0.0025 and init_clr_r >= -0.0025, "Idle rest hands clear black and white keys without clipping (L=%.2fmm, R=%.2fmm)" % [init_clr_l * 1000.0, init_clr_r * 1000.0])
 	
 	# Test key depression
 	stage.press_key(60, Color.CYAN)
@@ -161,6 +185,8 @@ func _run() -> void:
 	check(white_curl_sum > rest_curl_sum + 12.0 and black_curl_sum > rest_curl_sum + 2.0, "STRIKING flexion exceeds IDLE dome curl on both white and black keys")
 
 	var continuity_ok: bool = true
+	var jump_clearance_ok: bool = true
+	var min_jump_clr: float = INF
 	var max_wrist_step: float = 0.0
 	var max_light_energy: float = 0.0
 	var chord_seq: Array = [[25, 28, 32], [103, 106, 108], [61, 66, 70], [42, 46, 51], [85, 90, 97]]
@@ -176,6 +202,10 @@ func _run() -> void:
 			max_wrist_step = maxf(max_wrist_step, absf(stage._hands[side_i].position.x - prev_wx[side_i]))
 			prev_wx[side_i] = stage._hands[side_i].position.x
 			max_light_energy = maxf(max_light_energy, stage._hand_lights[side_i].light_energy)
+			var frame_clr: float = _min_finger_clearance(stage, side_i)
+			min_jump_clr = minf(min_jump_clr, frame_clr)
+			if frame_clr < -0.003:
+				jump_clearance_ok = false
 			var sk_i: Skeleton3D = stage._skeletons[side_i]
 			for f_name: String in ["index", "middle", "ring", "pinky"]:
 				var b_names: Array[String] = [f_name + "-finger-phalanx-proximal", f_name + "-finger-phalanx-intermediate", f_name + "-finger-phalanx-distal", f_name + "-finger-tip"]
@@ -187,6 +217,7 @@ func _run() -> void:
 					if absf(d_pose - d_rest) > 0.001:
 						continuity_ok = false
 	check(continuity_ok, "60-frame rapid octave jumps & black chords preserve all phalanx bone lengths within 1mm")
+	check(jump_clearance_ok, "60-frame rapid octave jumps keep all 10 fingers above key surfaces (min clr=%.2fmm)" % [min_jump_clr * 1000.0])
 	check(max_wrist_step < 0.05, "Rapid octave jumps interpolate smoothly without abrupt per-frame teleport steps")
 	check(max_light_energy <= 0.56, "Hand reactive OmniLight3D stays balanced and capped below saturation")
 
@@ -521,6 +552,36 @@ func _run() -> void:
 	app.set_stage_mode("2d")
 	check(app.keyboard.key_glow_layer != null and app.keyboard.key_glow_layer.visible, "2D key_glow_layer becomes visible in 2D mode")
 	app.set_stage_mode("3d")
+
+	# Regression: per-finger collision clearance on white key between black keys, white triad, and black chords
+	stage.release_all()
+	for _f in range(30):
+		stage._process(0.016)
+	stage.press_key(67, Color.CYAN)
+	for _f in range(25):
+		stage._process(0.016)
+	var clr_white_67: float = _min_finger_clearance(stage, 1)
+	check(clr_white_67 >= -0.0025, "Single white key G4 (67) clears adjacent black keys F#4/G#4 (clr=%.2fmm)" % [clr_white_67 * 1000.0])
+	stage.release_all()
+	for _f in range(15):
+		stage._process(0.016)
+	for m: int in [60, 64, 67]:
+		stage.press_key(m, Color.CYAN)
+	for _f in range(25):
+		stage._process(0.016)
+	var clr_white_triad: float = _min_finger_clearance(stage, 1)
+	check(clr_white_triad >= -0.0025, "White triad [60, 64, 67] avoids finger/black-key clipping (clr=%.2fmm)" % [clr_white_triad * 1000.0])
+	stage.release_all()
+	for _f in range(15):
+		stage._process(0.016)
+	for m: int in [61, 65, 68, 73, 44, 49, 53, 56]:
+		stage.press_key(m, Color.RED if m >= 60 else Color.CYAN)
+	for _f in range(25):
+		stage._process(0.016)
+	var clr_black_l: float = _min_finger_clearance(stage, 0)
+	var clr_black_r: float = _min_finger_clearance(stage, 1)
+	check(clr_black_l >= -0.0025 and clr_black_r >= -0.0025, "Black-key chords keep all fingers clear of unpressed black keys (L=%.2fmm, R=%.2fmm)" % [clr_black_l * 1000.0, clr_black_r * 1000.0])
+	stage.release_all()
 
 	stage.queue_free()
 	app.queue_free()

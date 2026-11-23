@@ -19,6 +19,13 @@ const WHITE_TILT_DEG: float = 5.2
 const BLACK_TILT_DEG: float = 6.5
 const WHITE_SINK: float = 0.0012
 const BLACK_SINK: float = 0.0025
+const FINGER_PAD_RADIUS: float = 0.0082
+const FINGER_TIP_FORWARD: float = 0.0115
+const FINGER_HALF_WIDTH: float = 0.0085
+const WHITE_CONTACT_Z: float = 0.040
+const WHITE_THUMB_CONTACT_Z: float = 0.056
+const BLACK_CONTACT_Z: float = -0.012
+const BLACK_THUMB_CONTACT_Z: float = 0.006
 
 var _rest_positions: Array[Vector3] = []
 var _black_flags: PackedByteArray = PackedByteArray()
@@ -57,16 +64,39 @@ func get_key_pressed_transform(midi: int, depth_01: float) -> Transform3D:
 	var pos: Vector3 = pivot + rot * (rest - pivot) - Vector3(0.0, sink, 0.0)
 	return Transform3D(rot, pos)
 
+func get_key_top_y(midi: int, z: float, depth_01: float) -> float:
+	var d: float = clampf(depth_01, -0.06, 1.12)
+	if is_black_key(midi):
+		var cz: float = clampf(z, KEY_HINGE_Z, BLACK_Z + BLACK_LENGTH * 0.5)
+		return (BLACK_Y + BLACK_HEIGHT * 0.5) - (sin(deg_to_rad(BLACK_TILT_DEG) * d) * (cz - KEY_HINGE_Z) + BLACK_SINK * d)
+	var cz: float = clampf(z, KEY_HINGE_Z, WHITE_LENGTH * 0.5)
+	return (WHITE_HEIGHT * 0.5) - (sin(deg_to_rad(WHITE_TILT_DEG) * d) * (cz - KEY_HINGE_Z) + WHITE_SINK * d)
+
+func get_surface_ceiling_y(x: float, z: float, depth: PackedFloat32Array = PackedFloat32Array(), half_x: float = FINGER_HALF_WIDTH, front_z: float = FINGER_TIP_FORWARD, back_z: float = 0.006) -> float:
+	var ceiling: float = -0.0135
+	var z_min: float = z - front_z
+	var z_max: float = z + back_z
+	var depth_count: int = depth.size()
+	for index: int in range(KEY_COUNT):
+		var midi: int = FIRST_MIDI + index
+		var black: bool = is_black_key(midi)
+		var key_half_w: float = BLACK_WIDTH * 0.5 if black else WHITE_WIDTH * 0.5
+		var rest: Vector3 = _rest_positions[index]
+		if absf(rest.x - x) > key_half_w + half_x:
+			continue
+		var key_front_z: float = (BLACK_Z + BLACK_LENGTH * 0.5) if black else (WHITE_LENGTH * 0.5)
+		if z_min <= key_front_z and z_max >= KEY_HINGE_Z:
+			var d: float = depth[index] if index < depth_count else 0.0
+			var sample_z: float = clampf(z_min, KEY_HINGE_Z, key_front_z)
+			ceiling = maxf(ceiling, get_key_top_y(midi, sample_z, d))
+	return ceiling
+
 func get_strike_contact_point(midi: int, depth_01: float, is_thumb: bool = false) -> Vector3:
 	var rest: Vector3 = get_key_rest_position(midi)
-	var d: float = clampf(depth_01, 0.0, 1.12)
-	if is_black_key(midi):
-		var contact_z: float = 0.006 if is_thumb else -0.012
-		var drop: float = sin(deg_to_rad(BLACK_TILT_DEG) * d) * (contact_z - KEY_HINGE_Z) + BLACK_SINK * d
-		return Vector3(rest.x, 0.041 - drop, contact_z)
-	var contact_z: float = 0.052 if is_thumb else 0.033
-	var drop: float = sin(deg_to_rad(WHITE_TILT_DEG) * d) * (contact_z - KEY_HINGE_Z) + WHITE_SINK * d
-	return Vector3(rest.x, 0.009 - drop, contact_z)
+	var black: bool = is_black_key(midi)
+	var contact_z: float = (BLACK_THUMB_CONTACT_Z if is_thumb else BLACK_CONTACT_Z) if black else (WHITE_THUMB_CONTACT_Z if is_thumb else WHITE_CONTACT_Z)
+	var surface_y: float = get_key_top_y(midi, contact_z, clampf(depth_01, 0.0, 1.12))
+	return Vector3(rest.x, surface_y + FINGER_PAD_RADIUS, contact_z)
 
 func get_hover_point(midi: int, is_thumb: bool = false) -> Vector3:
 	return get_strike_contact_point(midi, 0.0, is_thumb) + Vector3(0.0, 0.016, 0.002)
