@@ -265,7 +265,7 @@ void fragment() {
 	float core = exp(-(p.x * p.x * 2.8 + p.y * p.y * 5.2));
 	float edge = smoothstep(1.0, 0.15, length(p));
 	float a = core * edge * clamp(intensity, 0.0, 2.2);
-	vec3 col = mix(tint.rgb, vec3(1.0), clamp(core * 0.55 * min(intensity, 1.0), 0.0, 0.65));
+	vec3 col = tint.rgb;
 	ALBEDO = col * a;
 	ALPHA = clamp(a, 0.0, 1.0);
 }
@@ -369,6 +369,30 @@ func _apply_hand_material(node: Node) -> void:
 	for child: Node in node.get_children():
 		_apply_hand_material(child)
 
+static func _vivid_rail_color(tint: Color) -> Color:
+	var sat: float = clampf(tint.s * 1.18, 0.0, 1.0)
+	var val: float = clampf(maxf(tint.v, 0.92) if tint.v > 0.05 else tint.v, 0.0, 1.0)
+	return Color.from_hsv(tint.h, sat, val, 1.0)
+
+func _sync_rail_segment(index: int) -> void:
+	if index < 0 or index >= _rail_segments.size():
+		return
+	var active_glow: bool = _pressed[index] != 0
+	var seg: MeshInstance3D = _rail_segments[index]
+	var halo: MeshInstance3D = _rail_halos[index]
+	seg.visible = active_glow
+	halo.visible = active_glow
+	if active_glow:
+		var pulse: float = _rail_pulse[index]
+		var vivid: Color = _vivid_rail_color(_key_colors[index])
+		var boost: float = 0.96 + 0.08 * pulse
+		var core_col: Color = Color(vivid.r * boost, vivid.g * boost, vivid.b * boost, 1.0)
+		_rail_segment_materials[index].albedo_color = core_col
+		seg.scale = Vector3(1.0 + 0.14 * pulse, 1.0 + 0.55 * pulse, 1.0 + 0.50 * pulse)
+		_rail_halo_materials[index].set_shader_parameter("tint", vivid)
+		_rail_halo_materials[index].set_shader_parameter("intensity", 1.25 + pulse * 0.55)
+		halo.scale = Vector3(1.0 + 0.25 * pulse, 1.0, 1.0 + 0.35 * pulse)
+
 func press_key(midi: int, color: Color, token: int = -1) -> void:
 	var index: int = midi - 21
 	if index < 0 or index >= _keys.size():
@@ -381,6 +405,7 @@ func press_key(midi: int, color: Color, token: int = -1) -> void:
 	_rail_pulse[index] = 1.0
 	_key_colors[index] = color
 	_key_materials[index].emission = color
+	_sync_rail_segment(index)
 	if _live_cascade_enabled:
 		for existing: LiveNote in _live_notes:
 			if existing.midi == midi and existing.released < 0.0:
@@ -388,7 +413,7 @@ func press_key(midi: int, color: Color, token: int = -1) -> void:
 		_live_notes.append(LiveNote.new(token, midi, _elapsed_time, color))
 		while _live_notes.size() > MAX_LIVE_NOTES:
 			_live_notes.pop_front()
-		_request_cascade_redraw()
+	_request_cascade_redraw()
 
 func release_live_note(token: int) -> void:
 	if token < 0:
@@ -405,23 +430,24 @@ func release_key(midi: int) -> void:
 	var index: int = midi - 21
 	if index >= 0 and index < _pressed.size():
 		_pressed[index] = 0
-	var changed: bool = false
+		_energy[index] = 0.0
+		_rail_pulse[index] = 0.0
+		_sync_rail_segment(index)
 	for live_note: LiveNote in _live_notes:
 		if live_note.midi == midi and live_note.released < 0.0:
 			live_note.released = _elapsed_time
-			changed = true
-	if changed:
-		_request_cascade_redraw()
+	_request_cascade_redraw()
 
 func release_all() -> void:
 	_pressed.fill(0)
-	var changed: bool = false
+	_energy.fill(0.0)
+	_rail_pulse.fill(0.0)
+	for i: int in range(_rail_segments.size()):
+		_sync_rail_segment(i)
 	for live_note: LiveNote in _live_notes:
 		if live_note.released < 0.0:
 			live_note.released = _elapsed_time
-			changed = true
-	if changed:
-		_request_cascade_redraw()
+	_request_cascade_redraw()
 
 func set_live_cascade_enabled(enabled: bool) -> void:
 	if _live_cascade_enabled == enabled:
@@ -579,24 +605,10 @@ func _process(delta: float) -> void:
 		shade.visible = press_vis > 0.005
 		if shade.visible:
 			_key_shade_materials[index].set_shader_parameter("press", press_vis)
-		_energy[index] = 2.0 if _pressed[index] != 0 else _energy[index] * exp(-5.0 * dt)
-		_rail_pulse[index] *= exp(-14.0 * dt)
-		var active_glow: bool = _energy[index] > 0.01
-		var seg: MeshInstance3D = _rail_segments[index]
-		var halo: MeshInstance3D = _rail_halos[index]
-		seg.visible = active_glow
-		halo.visible = active_glow
-		if active_glow:
-			var pulse: float = _rail_pulse[index]
-			var e_norm: float = clampf(_energy[index] * 0.5, 0.0, 1.0)
-			var tint: Color = _key_colors[index]
-			var core_col: Color = tint.lerp(Color.WHITE, 0.40 + 0.30 * pulse) * (1.1 + 0.7 * e_norm + 0.6 * pulse)
-			core_col.a = 1.0
-			_rail_segment_materials[index].albedo_color = core_col
-			seg.scale = Vector3(1.0 + 0.14 * pulse, 1.0 + 0.55 * pulse, 1.0 + 0.50 * pulse)
-			_rail_halo_materials[index].set_shader_parameter("tint", tint)
-			_rail_halo_materials[index].set_shader_parameter("intensity", _energy[index] * 0.55 + pulse * 0.65)
-			halo.scale = Vector3(1.0 + 0.25 * pulse, 1.0, 1.0 + 0.35 * pulse)
+		var active_glow: bool = _pressed[index] != 0
+		_energy[index] = 2.0 if active_glow else 0.0
+		_rail_pulse[index] = _rail_pulse[index] * exp(-14.0 * dt) if active_glow else 0.0
+		_sync_rail_segment(index)
 	_elapsed_time += delta
 	_update_hands(delta)
 	_update_hand_lights(damping)
@@ -810,22 +822,23 @@ func _draw_cascade_flares() -> void:
 	var active_count: int = 0
 	var avg_color: Color = Color(0.0, 0.0, 0.0, 0.0)
 	for index: int in range(_energy.size()):
-		if _energy[index] > 0.01:
+		if _pressed[index] != 0 and _energy[index] > 0.01:
 			active_count += 1
 			avg_color += _key_colors[index]
 	var line_tint: Color = Color(0.55, 0.66, 1.0)
 	if active_count > 0:
-		line_tint = (avg_color / float(active_count)).lerp(Color(0.85, 0.90, 1.0), 0.35)
+		line_tint = _vivid_rail_color(avg_color / float(active_count))
 	var line_y: float = _strike_rail_y - 1.0
 	for spread: int in range(8, 0, -1):
 		var a: float = (0.006 + 0.018 * exp(-float(spread) * 0.32)) * (1.35 if active_count > 0 else 0.75)
 		_flare_layer.draw_line(Vector2(x_left, line_y), Vector2(x_right, line_y), Color(line_tint.r, line_tint.g, line_tint.b, a), float(spread) * 2.0, true)
-	_flare_layer.draw_line(Vector2(x_left, line_y), Vector2(x_right, line_y), Color(1.4, 1.4, 1.4, 0.55), 1.2, true)
+	var core_line_col: Color = Color(line_tint.r * 1.12, line_tint.g * 1.12, line_tint.b * 1.12, 0.65) if active_count > 0 else Color(1.2, 1.25, 1.35, 0.45)
+	_flare_layer.draw_line(Vector2(x_left, line_y), Vector2(x_right, line_y), core_line_col, 1.2, true)
 	if active_count == 0:
 		return
 	var density_scale: float = clampf(1.0 / sqrt(maxf(1.0, float(active_count) * 0.40)), 0.28, 1.0)
 	for index: int in range(_energy.size()):
-		if _energy[index] <= 0.01:
+		if _pressed[index] == 0 or _energy[index] <= 0.01:
 			continue
 		var midi: int = index + 21
 		var key_x: float = _rest[index].x
@@ -836,15 +849,15 @@ func _draw_cascade_flares() -> void:
 		var key_w: float = maxf(6.0, absf(edge_r.x - edge_l.x))
 		var pulse: float = _rail_pulse[index]
 		var e_norm: float = clampf(_energy[index] * 0.5, 0.0, 1.0)
-		var tint: Color = _key_colors[index]
+		var tint: Color = _vivid_rail_color(_key_colors[index])
 		var fw: float = key_w * (4.4 + 1.4 * pulse)
 		var fh: float = key_w * (3.0 + 1.0 * pulse)
 		var f_alpha: float = clampf((0.42 * e_norm + 0.36 * pulse) * density_scale, 0.0, 0.92)
-		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - fw * 0.5, _strike_rail_y - fh * 0.5, fw, fh), false, Color(tint.r * 1.25, tint.g * 1.25, tint.b * 1.25, f_alpha))
+		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - fw * 0.5, _strike_rail_y - fh * 0.5, fw, fh), false, Color(tint.r * 1.12, tint.g * 1.12, tint.b * 1.12, f_alpha))
 		var cw: float = key_w * (2.2 + 0.7 * pulse)
 		var ch: float = key_w * (1.6 + 0.5 * pulse)
-		var c_alpha: float = clampf((0.55 * e_norm + 0.50 * pulse) * density_scale, 0.0, 1.0)
-		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - cw * 0.5, _strike_rail_y - ch * 0.5, cw, ch), false, Color(1.75, 1.55, 1.65, c_alpha))
+		var c_alpha: float = clampf((0.48 * e_norm + 0.38 * pulse) * density_scale, 0.0, 0.95)
+		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - cw * 0.5, _strike_rail_y - ch * 0.5, cw, ch), false, Color(tint.r * 1.22, tint.g * 1.22, tint.b * 1.22, c_alpha))
 
 func _update_hand_lights(damping: float) -> void:
 	for side in range(_hand_lights.size()):

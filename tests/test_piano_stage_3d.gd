@@ -614,7 +614,14 @@ func _run() -> void:
 	check(w_pressed_front_y < w_rest_front_y - 0.010 and w_pressed_back_y <= w_rest_back_y + 0.0005, "White key pivots downward around back hinge (>10mm front drop, back edge stays down)")
 	check(b_pressed_front_y < b_rest_front_y - 0.010 and b_pressed_back_y <= b_rest_back_y + 0.0005, "Black key pivots downward around back hinge (>10mm front drop, back edge stays down)")
 	check(stage._key_materials[w_idx].albedo_color.v < w_rest_albedo.v - 0.05 and stage._key_materials[b_idx].albedo_color.v > b_rest_albedo.v + 0.05, "Pressed keys show subtle physical albedo shift without glowing")
+	var red_seg_col: Color = stage._rail_segment_materials[b_idx].albedo_color
+	var red_halo_tint: Color = stage._rail_halo_materials[b_idx].get_shader_parameter("tint")
+	check(red_seg_col.r >= 0.90 and red_seg_col.g <= 0.05 and red_seg_col.b <= 0.05 and red_halo_tint.r >= 0.90 and red_halo_tint.g <= 0.05 and red_halo_tint.b <= 0.05, "Red active rail segment and halo preserve vivid pure red without washing out (seg=%s halo=%s)" % [red_seg_col, red_halo_tint])
+	stage.release_key(61)
+	check(not stage._rail_segments[b_idx].visible and not stage._rail_halos[b_idx].visible and is_zero_approx(stage._energy[b_idx]) and is_zero_approx(stage._rail_pulse[b_idx]), "Releasing a single key extinguishes top rail glow immediately at 0 frames")
+	check(stage._rail_segments[w_idx].visible and stage._rail_halos[w_idx].visible, "Other held keys keep top rail glow active when one key releases")
 	stage.release_all()
+	check(not stage._rail_segments[w_idx].visible and not stage._rail_halos[w_idx].visible and is_zero_approx(stage._energy[w_idx]) and is_zero_approx(stage._rail_pulse[w_idx]), "release_all extinguishes remaining top rail glow immediately at 0 frames")
 	for _f in range(70):
 		stage._process(0.016)
 	check(not stage._rail_segments[w_idx].visible and not stage._rail_halos[w_idx].visible and not stage._rail_segments[b_idx].visible and not stage._rail_halos[b_idx].visible, "Top rail glow segments and halos hide cleanly after release decay")
