@@ -23,7 +23,8 @@ class FingerChain extends RefCounted:
 	var collision_lift_deg: float = 0.0
 
 const FINGER_NAMES: Array[String] = ["thumb", "index", "middle", "ring", "pinky"]
-const BASE_SCALE_X: float = 1.12
+const MIN_SCALE_X: float = 0.98
+const BASE_SCALE_X: float = 1.06
 const MAX_SCALE_X: float = 1.26
 const REST_SPLAY_LEFT: Array[float] = [-0.46, -0.015, 0.0, 0.020, 0.045]
 const REST_SPLAY_RIGHT: Array[float] = [0.46, 0.015, 0.0, -0.020, -0.045]
@@ -37,7 +38,7 @@ const WRIST_SPEED: float = 22.0
 const WHITE_REST_Y: float = 0.090
 const WHITE_ACTIVE_Y: float = 0.079
 const BLACK_REST_Y: float = 0.094
-const WHITE_REST_Z: float = 0.194
+const WHITE_REST_Z: float = 0.188
 const BLACK_REST_Z: float = 0.146
 
 var side: int = 0
@@ -135,7 +136,7 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 				plan_z = minf(plan_z, 0.118)
 			else:
 				var wide_t: float = clampf((chord_span - 0.115) / 0.065, 0.0, 1.0)
-				plan_z = minf(plan_z, lerpf(0.189, 0.168, wide_t))
+				plan_z = minf(plan_z, lerpf(0.180, 0.166, wide_t))
 		elif thumb_assignment.state == FingeringSolver.FingerState.ANTICIPATING:
 			var thumb_ant_z: float = 0.124 if thumb_assignment.is_black else 0.191
 			plan_z = lerpf(plan_z, minf(plan_z, thumb_ant_z), thumb_assignment.weight)
@@ -182,7 +183,7 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 	hand_root.rotation.x = lerpf(hand_root.rotation.x, target_pitch, wrist_damping)
 	hand_root.rotation.y = lerpf(hand_root.rotation.y, target_yaw, wrist_damping)
 	hand_root.rotation.z = lerpf(hand_root.rotation.z, target_roll, wrist_damping)
-	var target_scale_x: float = clampf(BASE_SCALE_X + maxf(0.0, chord_span - 0.115) * 1.9, BASE_SCALE_X, MAX_SCALE_X) if plan.active_count > 0 else BASE_SCALE_X
+	var target_scale_x: float = clampf(plan.target_scale_x, MIN_SCALE_X, MAX_SCALE_X) if plan.active_count > 0 else BASE_SCALE_X
 	_hand_scale_x = lerpf(_hand_scale_x, target_scale_x, wrist_damping)
 	hand_root.scale = Vector3(_hand_scale_x, 1.0, 1.0)
 	var rest_splays: Array[float] = REST_SPLAY_LEFT if side == 0 else REST_SPLAY_RIGHT
@@ -222,7 +223,10 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 				targets[0] += 5.0 * chain.release_rebound
 				targets[1] += 7.5 * chain.release_rebound
 			elif _has_striking_neighbor(plan, finger):
-				targets[1] += 3.0
+				targets[0] += 4.0
+				targets[1] += 7.5
+				if targets.size() > 2:
+					targets[2] -= 3.0
 			var breath: float = sin(elapsed_time * 2.6 + float(finger) * 0.85 + float(side) * 1.4) * 1.2
 			targets[1] += breath
 			if targets.size() > 2:
@@ -232,13 +236,7 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 		var target_splay: float = rest_splays[finger]
 		if striking or anticipating:
 			var desired_for_splay: Vector3 = hand_inv * (assignment.target_pos if striking else _world_to_stage(markers[finger].global_position))
-			var bounds: Vector2 = _splay_bounds(finger)
-			var sens: float = 0.058 if finger == 0 else (0.085 if finger == 4 else 0.105)
-			var sp: float = rest_splays[finger]
-			for _k: int in range(3):
-				var tip_x: float = _unoffset_tip_local(chain, chain.angles, sp).x
-				sp = clampf(sp + (desired_for_splay.x - tip_x) / sens, bounds.x, bounds.y)
-			target_splay = sp
+			target_splay = _solve_splay_for_x(chain, chain.angles, desired_for_splay.x, rest_splays[finger], _splay_bounds(finger))
 		target_splays[finger] = target_splay
 	for finger: int in range(1, _chains.size()):
 		if plan.fingers[finger].state != FingeringSolver.FingerState.IDLE:
@@ -264,6 +262,13 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 	_wrist_collision_y = req_wrist_y if req_wrist_y >= _wrist_collision_y else lerpf(_wrist_collision_y, req_wrist_y, wrist_clr_decay)
 	hand_root.position.y = _wrist_base_y + _wrist_collision_y
 	hand_inv = hand_root.transform.affine_inverse()
+	for finger: int in range(1, _chains.size()):
+		var assignment: FingeringSolver.FingerAssignment = plan.fingers[finger]
+		if assignment.state == FingeringSolver.FingerState.STRIKING:
+			var ch: FingerChain = _chains[finger]
+			var desired_loc: Vector3 = hand_inv * assignment.target_pos
+			var refined_sp: float = _solve_splay_for_x(ch, _effective_angles(ch), desired_loc.x, ch.splay, _splay_bounds(finger))
+			ch.splay = lerpf(ch.splay, refined_sp, finger_dampings[finger])
 	if not _chains.is_empty():
 		_solve_thumb_reach(plan.fingers[0], finger_dampings[0], hand_inv)
 	_enforce_finger_separation(plan, true)
@@ -271,6 +276,16 @@ func update_hand(plan: FingeringSolver.HandPlan, key_map: KeyMap3D, delta: float
 		_solve_thumb_collision_and_wrist_guard(plan, key_map, key_depth, step)
 	for chain: FingerChain in _chains:
 		_apply_finger_fk(chain)
+
+func _solve_splay_for_x(chain: FingerChain, eval_angles: PackedFloat32Array, desired_local_x: float, init_splay: float, bounds: Vector2) -> float:
+	var sp: float = clampf(init_splay, bounds.x, bounds.y)
+	for _iter: int in range(4):
+		var tx: float = _unoffset_tip_local(chain, eval_angles, sp).x
+		var dx: float = (_unoffset_tip_local(chain, eval_angles, sp + 0.01).x - tx) / 0.01
+		if absf(dx) <= 0.01:
+			break
+		sp = clampf(sp + (desired_local_x - tx) / dx, bounds.x, bounds.y)
+	return sp
 
 func _splay_bounds(finger: int) -> Vector2:
 	if side == 1:
@@ -297,12 +312,19 @@ func _enforce_finger_separation(plan: FingeringSolver.HandPlan, use_stage_and_of
 			var d_splay: float = (deficit / (0.090 * _hand_scale_x)) * sign_dir
 			var f_strike: bool = plan.fingers[f].state == FingeringSolver.FingerState.STRIKING
 			var next_strike: bool = plan.fingers[f + 1].state == FingeringSolver.FingerState.STRIKING
-			var w0: float = 0.25 if (f_strike and not next_strike) else (0.75 if (not f_strike and next_strike) else 0.5)
+			var w0: float = 0.0 if (f_strike and not next_strike) else (1.0 if (not f_strike and next_strike) else 0.5)
 			var w1: float = 1.0 - w0
 			var b0: Vector2 = _splay_bounds(f)
 			var b1: Vector2 = _splay_bounds(f + 1)
-			_chains[f].splay = clampf(_chains[f].splay - d_splay * w0, b0.x, b0.y)
-			_chains[f + 1].splay = clampf(_chains[f + 1].splay + d_splay * w1, b1.x, b1.y)
+			var prev0: float = _chains[f].splay
+			var prev1: float = _chains[f + 1].splay
+			_chains[f].splay = clampf(prev0 - d_splay * w0, b0.x, b0.y)
+			_chains[f + 1].splay = clampf(prev1 + d_splay * w1, b1.x, b1.y)
+			var applied: float = ((prev0 - _chains[f].splay) + (_chains[f + 1].splay - prev1)) * sign_dir
+			var rem_splay: float = (d_splay * sign_dir) - applied
+			if rem_splay > 0.0005:
+				_chains[f].splay = clampf(_chains[f].splay - rem_splay * 0.5 * sign_dir, b0.x, b0.y)
+				_chains[f + 1].splay = clampf(_chains[f + 1].splay + rem_splay * 0.5 * sign_dir, b1.x, b1.y)
 
 func _solve_long_finger_strike_and_collision(chain: FingerChain, assignment: FingeringSolver.FingerAssignment, key_map: KeyMap3D, key_depth: PackedFloat32Array, damping: float, step: float) -> float:
 	chain.root_offset = Vector3.ZERO

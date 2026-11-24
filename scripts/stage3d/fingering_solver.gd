@@ -14,6 +14,7 @@ class FingerAssignment extends RefCounted:
 class HandPlan extends RefCounted:
 	var side: int = 0
 	var wrist_target_x: float = 0.0
+	var target_scale_x: float = 1.06
 	var chord_span: float = 0.0
 	var black_ratio: float = 0.0
 	var active_count: int = 0
@@ -23,9 +24,23 @@ class HandPlan extends RefCounted:
 const LOOKAHEAD_SEC: float = 0.28
 const WRIST_MIN_X: float = -0.565
 const WRIST_MAX_X: float = 0.565
+const MIN_SCALE_X: float = 0.98
+const BASE_SCALE_X: float = 1.06
+const MAX_SCALE_X: float = 1.26
 const DEFAULT_WRIST_X: Array[float] = [-0.18, 0.18]
 const FINGER_REST_X_LEFT: Array[float] = [0.058, 0.021, -0.008, -0.038, -0.055]
 const FINGER_REST_X_RIGHT: Array[float] = [-0.058, -0.021, 0.008, 0.038, 0.055]
+const REST_X_RIGHT_UNIT: Array[float] = [-0.0527, -0.0183, 0.0073, 0.0341, 0.0494]
+const RMIN_X_RIGHT_UNIT: Array[float] = [-0.0819, -0.0374, -0.0026, 0.0278, 0.0439]
+const RMAX_X_RIGHT_UNIT: Array[float] = [-0.0470, -0.0120, 0.0170, 0.0464, 0.0658]
+const THUMB_ROOT_X_UNIT: float = 0.012
+
+static func compute_scale_x(chord_span: float, active_count: int) -> float:
+	if active_count >= 4 and chord_span < 0.115:
+		return clampf(MIN_SCALE_X + maxf(0.0, chord_span - 0.085) * 2.5, MIN_SCALE_X, BASE_SCALE_X)
+	if active_count >= 2:
+		return clampf(BASE_SCALE_X + maxf(0.0, chord_span - 0.105) * 2.2, BASE_SCALE_X, MAX_SCALE_X)
+	return BASE_SCALE_X
 
 var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
 var _held_finger_for_midi: Array[Dictionary] = [{}, {}]
@@ -68,40 +83,28 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		current_x = clampf(current_x, WRIST_MIN_X, WRIST_MAX_X)
 		var hold_x: float = clampf(_last_wrist_x[side] if _has_last_wrist_x[side] else current_x, WRIST_MIN_X, WRIST_MAX_X)
 		plan.wrist_target_x = hold_x
+		plan.target_scale_x = BASE_SCALE_X
 		var has_active: bool = not active[side].is_empty()
-		var centroid: float = 0.0
-		var total_weight: float = 0.0
-		for midi: int in active[side]:
-			centroid += key_map.get_key_rest_position(midi).x
-			total_weight += 1.0
 		var future_midis: Array = upcoming[side].keys()
 		future_midis.sort()
-		for midi: int in future_midis:
-			var time_until: float = float(upcoming[side][midi]) - playback_time
-			var future_weight: float = (0.18 if time_until <= 0.12 else 0.08) if has_active else (0.75 if time_until <= 0.12 else 0.35)
-			centroid += key_map.get_key_rest_position(midi).x * future_weight
-			total_weight += future_weight
-		if total_weight > 0.0:
-			plan.wrist_target_x = clampf(centroid / total_weight, WRIST_MIN_X, WRIST_MAX_X)
 		for finger_index: int in range(5):
 			var assignment: FingerAssignment = FingerAssignment.new()
 			assignment.finger_index = finger_index
 			plan.fingers.append(assignment)
-		var strikes: Dictionary = _assign(key_map, active[side], side, plan.wrist_target_x, {})
+		var strikes: Dictionary = {}
+		if has_active:
+			var joint: Dictionary = _solve_joint_strikes(key_map, active[side], side, hold_x)
+			strikes = joint["pairs"]
+			plan.wrist_target_x = float(joint["wrist_x"])
+			plan.target_scale_x = float(joint["scale_x"])
+			plan.chord_span = float(joint["chord_span"])
 		var anticipations: Dictionary = _assign(key_map, future_midis, side, plan.wrist_target_x, strikes)
-		var offsets: Array[float] = FINGER_REST_X_LEFT if side == 0 else FINGER_REST_X_RIGHT
-		var anchor_sum: float = 0.0
-		var anchor_weight: float = 0.0
 		var next_retention: Dictionary = {}
 		var black_weight: float = 0.0
 		var assigned_weight: float = 0.0
 		var highest_strike_midi: int = -1
 		var highest_strike_finger: int = -1
 		var min_time_until: float = LOOKAHEAD_SEC
-		var min_strike_x: float = INF
-		var max_strike_x: float = -INF
-		var min_strike_f: int = -1
-		var max_strike_f: int = -1
 		for midi: int in strikes:
 			var finger: int = int(strikes[midi])
 			var assignment: FingerAssignment = plan.fingers[finger]
@@ -115,16 +118,6 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.active_count += 1
 			assigned_weight += 1.0
 			black_weight += 1.0 if assignment.is_black else 0.0
-			var key_x: float = key_map.get_key_rest_position(midi).x
-			if key_x < min_strike_x:
-				min_strike_x = key_x
-				min_strike_f = finger
-			if key_x > max_strike_x:
-				max_strike_x = key_x
-				max_strike_f = finger
-			var offset_scale: float = 0.45 if (strikes.size() == 1 and finger != 0) else 1.0
-			anchor_sum += key_x - offsets[finger] * offset_scale
-			anchor_weight += 1.0
 			next_retention[midi] = finger
 			if midi > highest_strike_midi:
 				highest_strike_midi = midi
@@ -145,26 +138,17 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.anticipating_count += 1
 			assigned_weight += 0.5
 			black_weight += 0.5 if assignment.is_black else 0.0
-			var ant_anchor_weight: float = (0.18 if time_until <= 0.12 else 0.08) if has_active else (0.75 if time_until <= 0.12 else 0.35)
-			anchor_sum += (key_map.get_key_rest_position(midi).x - offsets[finger] * (1.0 if has_active else 0.85)) * ant_anchor_weight
-			anchor_weight += ant_anchor_weight
 			next_retention[midi] = finger
 		if has_active:
-			if anchor_weight > 0.0:
-				plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
-			if strikes.size() >= 2 and min_strike_f >= 0 and max_strike_f >= 0:
-				plan.chord_span = max_strike_x - min_strike_x
-				var extreme_wrist_x: float = 0.5 * ((min_strike_x - offsets[min_strike_f]) + (max_strike_x - offsets[max_strike_f]))
-				plan.wrist_target_x = clampf(lerpf(plan.wrist_target_x, extreme_wrist_x, 0.70), WRIST_MIN_X, WRIST_MAX_X)
-			if plan.fingers[0].state == FingerState.STRIKING and plan.fingers[0].midi >= 21:
-				var thumb_ideal_x: float = key_map.get_key_rest_position(plan.fingers[0].midi).x - offsets[0]
-				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.045, thumb_ideal_x + 0.045), WRIST_MIN_X, WRIST_MAX_X)
 			_last_wrist_x[side] = plan.wrist_target_x
 			_has_last_wrist_x[side] = true
-		elif anchor_weight > 0.0:
-			var upcoming_x: float = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
+		elif not future_midis.is_empty():
+			var ant_joint: Dictionary = _solve_joint_strikes(key_map, future_midis, side, hold_x)
+			var ant_wx: float = float(ant_joint["wrist_x"])
+			plan.target_scale_x = float(ant_joint["scale_x"])
+			plan.chord_span = float(ant_joint["chord_span"])
 			var approach_t: float = clampf(1.0 - min_time_until / LOOKAHEAD_SEC, 0.0, 1.0)
-			plan.wrist_target_x = clampf(lerpf(hold_x, upcoming_x, approach_t * approach_t), WRIST_MIN_X, WRIST_MAX_X)
+			plan.wrist_target_x = clampf(lerpf(hold_x, ant_wx, approach_t * approach_t), WRIST_MIN_X, WRIST_MAX_X)
 		else:
 			plan.wrist_target_x = hold_x
 		plan.black_ratio = black_weight / assigned_weight if assigned_weight > 0.0 else 0.0
@@ -176,6 +160,127 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			_last_active_finger[side] = -1
 		plans.append(plan)
 	return plans
+
+
+func _finger_reach_x(finger: int, side: int, scale_x: float) -> Vector3:
+	var pad: float = THUMB_ROOT_X_UNIT if finger == 0 else 0.0
+	var lo_r: float = (RMIN_X_RIGHT_UNIT[finger] - pad) * scale_x
+	var rest_r: float = REST_X_RIGHT_UNIT[finger] * scale_x
+	var hi_r: float = (RMAX_X_RIGHT_UNIT[finger] + pad) * scale_x
+	if side == 1:
+		return Vector3(lo_r, rest_r, hi_r)
+	return Vector3(-hi_r, -rest_r, -lo_r)
+
+
+func _enumerate_rank_combos(k: int) -> Array[PackedInt32Array]:
+	var out: Array[PackedInt32Array] = []
+	var clamped_k: int = clampi(k, 1, 5)
+	_collect_rank_combos(0, clamped_k, PackedInt32Array(), out)
+	return out
+
+
+func _collect_rank_combos(start_rank: int, remaining: int, prefix: PackedInt32Array, out: Array[PackedInt32Array]) -> void:
+	if remaining == 0:
+		out.append(prefix)
+		return
+	for rank: int in range(start_rank, 6 - remaining):
+		var next_prefix: PackedInt32Array = prefix.duplicate()
+		next_prefix.append(rank)
+		_collect_rank_combos(rank + 1, remaining - 1, next_prefix, out)
+
+
+func _solve_joint_strikes(key_map: KeyMap3D, midis: Array, side: int, hold_x: float) -> Dictionary:
+	var k: int = midis.size()
+	if k == 0:
+		return {"pairs": {}, "wrist_x": hold_x, "scale_x": BASE_SCALE_X, "chord_span": 0.0}
+	var clamped_midis: Array = midis.slice(0, 5) if k > 5 else midis
+	k = clamped_midis.size()
+	var kx: PackedFloat32Array = PackedFloat32Array()
+	kx.resize(k)
+	for i: int in range(k):
+		kx[i] = key_map.get_key_rest_position(int(clamped_midis[i])).x
+	var chord_span: float = maxf(0.0, kx[k - 1] - kx[0]) if k >= 2 else 0.0
+	var scale_x: float = compute_scale_x(chord_span, k)
+	var span_semis: int = int(clamped_midis[k - 1]) - int(clamped_midis[0]) if k >= 2 else 0
+	var inner_idx: int = 0 if side == 1 else k - 1
+	var outer_idx: int = k - 1 if side == 1 else 0
+	var combos: Array[PackedInt32Array] = _enumerate_rank_combos(k)
+	var best_cost: float = INF
+	var best_pairs: Dictionary = {}
+	var best_wx: float = hold_x
+	for ranks: PackedInt32Array in combos:
+		var w_min: float = -INF
+		var w_max: float = INF
+		var ideal_sum: float = 0.0
+		var ranges: Array[Vector3] = []
+		ranges.resize(k)
+		var fingers: PackedInt32Array = PackedInt32Array()
+		fingers.resize(k)
+		for i: int in range(k):
+			var r: int = ranks[i]
+			var f: int = 4 - r if side == 0 else r
+			fingers[i] = f
+			var reach: Vector3 = _finger_reach_x(f, side, scale_x)
+			ranges[i] = reach
+			w_min = maxf(w_min, kx[i] - reach.z)
+			w_max = minf(w_max, kx[i] - reach.x)
+			ideal_sum += kx[i] - reach.y
+		var w_ideal: float = ideal_sum / float(k)
+		var wx: float = 0.0
+		var deficit: float = 0.0
+		if w_min <= w_max:
+			wx = clampf(w_ideal, w_min, w_max)
+		else:
+			wx = 0.5 * (w_min + w_max)
+			deficit = 0.5 * (w_min - w_max)
+		wx = clampf(wx, WRIST_MIN_X, WRIST_MAX_X)
+		var max_err: float = 0.0
+		var strain: float = 0.0
+		var pairs: Dictionary = {}
+		for i: int in range(k):
+			var reach: Vector3 = ranges[i]
+			var rel: float = kx[i] - wx
+			var err: float = maxf(0.0, reach.x - rel) + maxf(0.0, rel - reach.z)
+			max_err = maxf(max_err, err)
+			strain += absf(rel - reach.y)
+			pairs[int(clamped_midis[i])] = fingers[i]
+		var hold_w: float = 0.025 if k == 1 else 0.08
+		var cost: float = deficit * 40.0 + max_err * 40.0 + strain + absf(wx - hold_x) * hold_w
+		for i: int in range(k):
+			var midi: int = int(clamped_midis[i])
+			var r: int = ranks[i]
+			var f: int = fingers[i]
+			if int(_held_finger_for_midi[side].get(midi, -1)) == f:
+				cost -= 0.12
+			elif int(_last_finger_for_midi[side].get(midi, -1)) == f:
+				cost -= 0.010
+			if k == 1 and not _held_finger_for_midi[side].has(midi) and _last_active_midi[side] >= 0 and _last_active_midi[side] != midi and _last_active_finger[side] >= 0:
+				if f == _last_active_finger[side]:
+					cost += 0.032
+				if absi(midi - _last_active_midi[side]) <= 3:
+					var prev_rank: int = 4 - _last_active_finger[side] if side == 0 else _last_active_finger[side]
+					if (midi > _last_active_midi[side] and r > prev_rank) or (midi < _last_active_midi[side] and r < prev_rank):
+						cost -= 0.010
+			if k == 1:
+				if f == 2:
+					cost -= 0.012
+				elif f == 1:
+					cost -= 0.011
+				elif f == 0 or f == 4:
+					cost += 0.014
+			elif k == 2 and span_semis <= 2 and (f == 1 or f == 2):
+				cost -= 0.010
+			if k >= 2 and span_semis >= 3 and i == inner_idx and f == 0:
+				cost -= 0.018
+			if k >= 2 and span_semis >= 7 and i == outer_idx and f == 4:
+				cost -= 0.018
+			if f == 0 and key_map.is_black_key(midi) and (k == 1 or (k >= 2 and span_semis < 3)):
+				cost += 0.025
+		if cost < best_cost:
+			best_cost = cost
+			best_pairs = pairs
+			best_wx = wx
+	return {"pairs": best_pairs, "wrist_x": best_wx, "scale_x": scale_x, "chord_span": chord_span}
 
 
 func _midi_span(midis: Array) -> int:

@@ -23,7 +23,7 @@ const FINGER_PAD_RADIUS: float = 0.0082
 const FINGER_TIP_FORWARD: float = 0.0115
 const FINGER_HALF_WIDTH: float = 0.0085
 const WHITE_CONTACT_Z: float = 0.042
-const WHITE_THUMB_CONTACT_Z: float = 0.070
+const WHITE_THUMB_CONTACT_Z: float = 0.062
 const BLACK_CONTACT_Z: float = -0.012
 const BLACK_THUMB_CONTACT_Z: float = 0.012
 

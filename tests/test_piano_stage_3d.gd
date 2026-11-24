@@ -960,6 +960,66 @@ func _run() -> void:
 	check(loaded_ok and app.auto_cascade_mode == "falling" and app.menu.current_auto_cascade_mode == "falling", "User settings persist and restore auto_cascade_mode across sessions")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_cfg))
 
+	# Regression (Joint Tracking): exact finger-to-key alignment across screenshot chord and interval/5-finger sweep
+	var empty_trk: Array[PianoStage3D.StageNote] = []
+	stage.set_notes(empty_trk)
+	stage.set_anticipation_enabled(false)
+	stage.release_all()
+	for _f in range(25):
+		stage._process(0.016)
+	for m: int in [52, 57, 65, 69]:
+		stage.press_key(m, Color.RED)
+	for _f in range(30):
+		stage._process(0.016)
+	var sc_reach_l: Dictionary = _max_assigned_x_error(stage, 0)
+	var sc_reach_r: Dictionary = _max_assigned_x_error(stage, 1)
+	var sc_anat_l: Dictionary = _check_hand_anatomy(stage, 0)
+	var sc_anat_r: Dictionary = _check_hand_anatomy(stage, 1)
+	var sc_clr_l: float = _min_finger_clearance(stage, 0)
+	var sc_clr_r: float = _min_finger_clearance(stage, 1)
+	var sc_lh_thumb_z: float = _thumb_tip_stage_pos(stage, 0).z
+	var sc_rh_thumb_z: float = _thumb_tip_stage_pos(stage, 1).z
+	check(int(sc_reach_l["count"]) == 2 and int(sc_reach_r["count"]) == 2 and float(sc_reach_l["max_err"]) < 0.0045 and float(sc_reach_r["max_err"]) < 0.0045, "Screenshot chord [52,57,65,69] aligns all 4 fingers within 4.5mm (L=%.2fmm, R=%.2fmm)" % [float(sc_reach_l["max_err"]) * 1000.0, float(sc_reach_r["max_err"]) * 1000.0])
+	check(sc_lh_thumb_z <= 0.068 and sc_rh_thumb_z <= 0.068, "Both thumbs rest solidly inside white keys (LH z=%.1fmm, RH z=%.1fmm)" % [sc_lh_thumb_z * 1000.0, sc_rh_thumb_z * 1000.0])
+	check(float(sc_anat_l["max_long_meta_disp"]) < 0.0005 and float(sc_anat_r["max_long_meta_disp"]) < 0.0005 and float(sc_anat_l["min_tip_gap"]) >= 0.013 and float(sc_anat_r["min_tip_gap"]) >= 0.013 and sc_clr_l >= -0.0025 and sc_clr_r >= -0.0025, "Screenshot chord preserves anatomy and key clearance (gaps=%.1f/%.1fmm, clrs=%.2f/%.2fmm)" % [float(sc_anat_l["min_tip_gap"]) * 1000.0, float(sc_anat_r["min_tip_gap"]) * 1000.0, sc_clr_l * 1000.0, sc_clr_r * 1000.0])
+
+	var tracking_sweep: Array = [
+		{"label": "Single E1 (28)", "side": 0, "midis": [28]},
+		{"label": "Single A2 (45)", "side": 0, "midis": [45]},
+		{"label": "Single C4 (60)", "side": 1, "midis": [60]},
+		{"label": "Single E5 (76)", "side": 1, "midis": [76]},
+		{"label": "Single A7 (105)", "side": 1, "midis": [105]},
+		{"label": "RH m2 [60,61]", "side": 1, "midis": [60, 61]},
+		{"label": "RH M2 [60,62]", "side": 1, "midis": [60, 62]},
+		{"label": "RH m3 [60,63]", "side": 1, "midis": [60, 63]},
+		{"label": "RH M3 [60,64]", "side": 1, "midis": [60, 64]},
+		{"label": "RH P4 [60,65]", "side": 1, "midis": [60, 65]},
+		{"label": "RH P5 [60,67]", "side": 1, "midis": [60, 67]},
+		{"label": "RH M6 [60,69]", "side": 1, "midis": [60, 69]},
+		{"label": "RH triad [60,64,67]", "side": 1, "midis": [60, 64, 67]},
+		{"label": "RH cluster [60,62,64]", "side": 1, "midis": [60, 62, 64]},
+		{"label": "RH 5-finger [60,62,64,65,67]", "side": 1, "midis": [60, 62, 64, 65, 67]},
+		{"label": "LH M3 [53,57]", "side": 0, "midis": [53, 57]},
+		{"label": "LH P4 [52,57]", "side": 0, "midis": [52, 57]},
+		{"label": "LH P5 [48,55]", "side": 0, "midis": [48, 55]}
+	]
+	for item: Dictionary in tracking_sweep:
+		stage.release_all()
+		for _f in range(18):
+			stage._process(0.016)
+		var sw_side: int = int(item["side"])
+		var sw_midis: Array = item["midis"]
+		for m: int in sw_midis:
+			stage.press_key(m, Color.RED if sw_side == 1 else Color.CYAN)
+		for _f in range(30):
+			stage._process(0.016)
+		var sw_reach: Dictionary = _max_assigned_x_error(stage, sw_side)
+		var sw_anat: Dictionary = _check_hand_anatomy(stage, sw_side)
+		var sw_clr: float = _min_finger_clearance(stage, sw_side)
+		check(int(sw_reach["count"]) == sw_midis.size() and float(sw_reach["max_err"]) < 0.0055, "%s aligns all %d fingers within 5.5mm (count=%d, max_err=%.2fmm)" % [str(item["label"]), sw_midis.size(), int(sw_reach["count"]), float(sw_reach["max_err"]) * 1000.0])
+		check(float(sw_anat["max_long_meta_disp"]) < 0.0005 and float(sw_anat["min_tip_gap"]) >= 0.013 and float(sw_anat["max_seg_err"]) < 0.001 and sw_clr >= -0.0025, "%s keeps cohesive anatomy and key clearance (gap=%.1fmm, clr=%.2fmm)" % [str(item["label"]), float(sw_anat["min_tip_gap"]) * 1000.0, sw_clr * 1000.0])
+	stage.release_all()
+
 	stage.queue_free()
 	app.queue_free()
 	await process_frame
