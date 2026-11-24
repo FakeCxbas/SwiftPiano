@@ -14,6 +14,7 @@ class FingerAssignment extends RefCounted:
 class HandPlan extends RefCounted:
 	var side: int = 0
 	var wrist_target_x: float = 0.0
+	var chord_span: float = 0.0
 	var black_ratio: float = 0.0
 	var active_count: int = 0
 	var anticipating_count: int = 0
@@ -23,8 +24,8 @@ const LOOKAHEAD_SEC: float = 0.28
 const WRIST_MIN_X: float = -0.565
 const WRIST_MAX_X: float = 0.565
 const DEFAULT_WRIST_X: Array[float] = [-0.18, 0.18]
-const FINGER_REST_X_LEFT: Array[float] = [0.052, 0.018, -0.007, -0.032, -0.048]
-const FINGER_REST_X_RIGHT: Array[float] = [-0.052, -0.018, 0.007, 0.032, 0.048]
+const FINGER_REST_X_LEFT: Array[float] = [0.058, 0.021, -0.008, -0.038, -0.055]
+const FINGER_REST_X_RIGHT: Array[float] = [-0.058, -0.021, 0.008, 0.038, 0.055]
 
 var _last_finger_for_midi: Array[Dictionary] = [{}, {}]
 var _held_finger_for_midi: Array[Dictionary] = [{}, {}]
@@ -97,6 +98,10 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		var highest_strike_midi: int = -1
 		var highest_strike_finger: int = -1
 		var min_time_until: float = LOOKAHEAD_SEC
+		var min_strike_x: float = INF
+		var max_strike_x: float = -INF
+		var min_strike_f: int = -1
+		var max_strike_f: int = -1
 		for midi: int in strikes:
 			var finger: int = int(strikes[midi])
 			var assignment: FingerAssignment = plan.fingers[finger]
@@ -110,8 +115,15 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 			plan.active_count += 1
 			assigned_weight += 1.0
 			black_weight += 1.0 if assignment.is_black else 0.0
+			var key_x: float = key_map.get_key_rest_position(midi).x
+			if key_x < min_strike_x:
+				min_strike_x = key_x
+				min_strike_f = finger
+			if key_x > max_strike_x:
+				max_strike_x = key_x
+				max_strike_f = finger
 			var offset_scale: float = 0.45 if (strikes.size() == 1 and finger != 0) else 1.0
-			anchor_sum += key_map.get_key_rest_position(midi).x - offsets[finger] * offset_scale
+			anchor_sum += key_x - offsets[finger] * offset_scale
 			anchor_weight += 1.0
 			next_retention[midi] = finger
 			if midi > highest_strike_midi:
@@ -140,9 +152,13 @@ func solve(key_map: KeyMap3D, pressed: PackedByteArray, depth: PackedFloat32Arra
 		if has_active:
 			if anchor_weight > 0.0:
 				plan.wrist_target_x = clampf(anchor_sum / anchor_weight, WRIST_MIN_X, WRIST_MAX_X)
+			if strikes.size() >= 2 and min_strike_f >= 0 and max_strike_f >= 0:
+				plan.chord_span = max_strike_x - min_strike_x
+				var extreme_wrist_x: float = 0.5 * ((min_strike_x - offsets[min_strike_f]) + (max_strike_x - offsets[max_strike_f]))
+				plan.wrist_target_x = clampf(lerpf(plan.wrist_target_x, extreme_wrist_x, 0.70), WRIST_MIN_X, WRIST_MAX_X)
 			if plan.fingers[0].state == FingerState.STRIKING and plan.fingers[0].midi >= 21:
 				var thumb_ideal_x: float = key_map.get_key_rest_position(plan.fingers[0].midi).x - offsets[0]
-				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.020, thumb_ideal_x + 0.020), WRIST_MIN_X, WRIST_MAX_X)
+				plan.wrist_target_x = clampf(clampf(plan.wrist_target_x, thumb_ideal_x - 0.045, thumb_ideal_x + 0.045), WRIST_MIN_X, WRIST_MAX_X)
 			_last_wrist_x[side] = plan.wrist_target_x
 			_has_last_wrist_x[side] = true
 		elif anchor_weight > 0.0:
@@ -271,13 +287,19 @@ func _rebalance_registers(active: Array[Array], upcoming: Array[Dictionary], _cu
 func _assign(key_map: KeyMap3D, midis: Array, side: int, wrist_x: float, fixed: Dictionary) -> Dictionary:
 	var states: Dictionary = {0: {"cost": 0.0, "pairs": {}}}
 	var is_thumb_chord: bool = false
+	var is_wide_chord: bool = false
 	var inner_midi: int = -1
+	var outer_midi: int = -1
 	if midis.size() >= 2 and fixed.is_empty():
-		is_thumb_chord = (int(midis.back()) - int(midis.front())) >= 3
+		var span_semis: int = int(midis.back()) - int(midis.front())
+		is_thumb_chord = span_semis >= 3
+		is_wide_chord = span_semis >= 7
 		inner_midi = int(midis.front()) if side == 1 else int(midis.back())
+		outer_midi = int(midis.back()) if side == 1 else int(midis.front())
 	for midi: int in midis:
 		var next_states: Dictionary = states.duplicate()
 		var prefer_thumb: bool = is_thumb_chord and midi == inner_midi
+		var prefer_pinky: bool = is_wide_chord and midi == outer_midi
 		for mask: int in states:
 			var previous: Dictionary = states[mask]
 			for rank: int in range(5):
@@ -285,7 +307,7 @@ func _assign(key_map: KeyMap3D, midis: Array, side: int, wrist_x: float, fixed: 
 				if mask >= (1 << rank) or not _fits_fixed(midi, rank, side, fixed):
 					continue
 				var finger: int = 4 - rank if side == 0 else rank
-				var cost: float = float(previous["cost"]) + _finger_cost(key_map, midi, finger, side, wrist_x, fixed, prefer_thumb)
+				var cost: float = float(previous["cost"]) + _finger_cost(key_map, midi, finger, side, wrist_x, fixed, prefer_thumb, prefer_pinky)
 				var next_mask: int = mask | (1 << rank)
 				if next_states.has(next_mask) and float(next_states[next_mask]["cost"]) <= cost:
 					continue
@@ -314,10 +336,12 @@ func _fits_fixed(midi: int, rank: int, side: int, fixed: Dictionary) -> bool:
 	return true
 
 
-func _finger_cost(key_map: KeyMap3D, midi: int, finger: int, side: int, wrist_x: float, fixed: Dictionary, prefer_thumb: bool = false) -> float:
+func _finger_cost(key_map: KeyMap3D, midi: int, finger: int, side: int, wrist_x: float, fixed: Dictionary, prefer_thumb: bool = false, prefer_pinky: bool = false) -> float:
 	var offsets: Array[float] = FINGER_REST_X_LEFT if side == 0 else FINGER_REST_X_RIGHT
 	var key_x: float = key_map.get_key_rest_position(midi).x
 	var cost: float = absf(key_x - wrist_x - offsets[finger])
+	if finger == 4 and prefer_pinky:
+		cost -= 0.025
 	if finger == 0:
 		if prefer_thumb:
 			cost -= 0.038
