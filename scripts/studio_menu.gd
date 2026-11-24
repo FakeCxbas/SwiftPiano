@@ -12,6 +12,8 @@ signal anime_hands_toggled(enabled: bool)
 var anime_hands_toggle: CheckButton
 signal stage_3d_toggled(enabled: bool)
 var stage_3d_toggle: CheckButton
+signal fps_hud_toggled(enabled: bool)
+var fps_hud_toggle: CheckButton
 signal auto_cascade_mode_changed(mode: String)
 
 signal appearance_changed(color: Color, rainbow: bool, light_mode: Variant)
@@ -147,6 +149,8 @@ var shorts_toggle_btn: Button
 var current_shorts_enabled: bool = false
 var kps_toggle_btn: Button
 var current_kps_enabled: bool = true
+var fps_toggle_btn: Button
+var current_fps_enabled: bool = true
 var shake_toggle_btn: Button
 var current_shake_enabled: bool = false
 var rec_toggle_btn: Button
@@ -682,7 +686,7 @@ func _build_appearance() -> void:
 	rainbow_toggle.toggled.connect(func(_value): _emit_appearance())
 	box.add_child(rainbow_toggle)
 	anime_hands_toggle = CheckButton.new()
-	anime_hands_toggle.text = "Manos Anime"
+	anime_hands_toggle.text = "Manos 3D"
 	anime_hands_toggle.button_pressed = true
 	anime_hands_toggle.focus_mode = Control.FOCUS_NONE
 	anime_hands_toggle.toggled.connect(func(enabled: bool) -> void: anime_hands_toggled.emit(enabled))
@@ -693,6 +697,13 @@ func _build_appearance() -> void:
 	stage_3d_toggle.focus_mode = Control.FOCUS_NONE
 	stage_3d_toggle.toggled.connect(func(enabled: bool) -> void: stage_3d_toggled.emit(enabled))
 	box.add_child(stage_3d_toggle)
+	fps_hud_toggle = CheckButton.new()
+	fps_hud_toggle.text = "Contador de FPS (Ctrl+F)"
+	fps_hud_toggle.button_pressed = current_fps_enabled
+	fps_hud_toggle.focus_mode = Control.FOCUS_NONE
+	fps_hud_toggle.toggled.connect(func(enabled: bool) -> void:
+		set_fps_hud_enabled(enabled, true))
+	box.add_child(fps_hud_toggle)
 	var auto_cascade_row: HFlowContainer = HFlowContainer.new()
 	auto_cascade_row.add_theme_constant_override("h_separation", 8)
 	auto_cascade_row.add_theme_constant_override("v_separation", 8)
@@ -903,6 +914,13 @@ func _build_appearance() -> void:
 	kps_toggle_btn.pressed.connect(func():
 		set_creator_kps(not current_kps_enabled, true))
 	shorts_row.add_child(kps_toggle_btn)
+	
+	fps_toggle_btn = button("Contador FPS (Ctrl+F)")
+	fps_toggle_btn.clip_text = false
+	fps_toggle_btn.custom_minimum_size = Vector2(195, 34)
+	fps_toggle_btn.pressed.connect(func() -> void:
+		set_fps_hud_enabled(not current_fps_enabled, true))
+	shorts_row.add_child(fps_toggle_btn)
 	
 	shake_toggle_btn = button("💥 Camera Shake Graves")
 	shake_toggle_btn.clip_text = false
@@ -1177,6 +1195,8 @@ func _refresh_creator_styles() -> void:
 		StudioSkin._button(shorts_toggle_btn, current_shorts_enabled, chosen_color)
 	if kps_toggle_btn != null:
 		StudioSkin._button(kps_toggle_btn, current_kps_enabled, chosen_color)
+	if fps_toggle_btn != null:
+		StudioSkin._button(fps_toggle_btn, current_fps_enabled, chosen_color)
 	if shake_toggle_btn != null:
 		StudioSkin._button(shake_toggle_btn, current_shake_enabled, chosen_color)
 	if rec_toggle_btn != null:
@@ -1228,6 +1248,14 @@ func set_anime_hands_enabled(enabled: bool) -> void:
 func set_stage_3d_enabled(enabled: bool) -> void:
 	if stage_3d_toggle != null:
 		stage_3d_toggle.set_pressed_no_signal(enabled)
+
+func set_fps_hud_enabled(enabled: bool, emit_sig: bool = false) -> void:
+	current_fps_enabled = enabled
+	if fps_hud_toggle != null:
+		fps_hud_toggle.set_pressed_no_signal(current_fps_enabled)
+	_refresh_creator_styles()
+	if emit_sig:
+		fps_hud_toggled.emit(current_fps_enabled)
 
 func set_auto_cascade_mode(mode: String, emit_sig: bool = false) -> void:
 	current_auto_cascade_mode = "falling" if mode == "falling" else "rising"
