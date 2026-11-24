@@ -14,6 +14,19 @@ class StageNote extends RefCounted:
 		duration = maxf(length, 0.01)
 		color = tint
 
+class LiveNote extends RefCounted:
+	var token: int
+	var midi: int
+	var born: float
+	var released: float
+	var color: Color
+	func _init(note_token: int = -1, pitch: int = 60, time: float = 0.0, tint: Color = Color.CYAN) -> void:
+		token = note_token
+		midi = pitch
+		born = time
+		released = -1.0
+		color = tint
+
 const KeyMap3DClass = preload("res://scripts/stage3d/key_map_3d.gd")
 const FingeringSolverClass = preload("res://scripts/stage3d/fingering_solver.gd")
 const HandIKControllerClass = preload("res://scripts/stage3d/hand_ik_controller.gd")
@@ -21,8 +34,15 @@ const SLOPE: float = 0.08
 const CASCADE_SPAN: float = 1.15
 const STRIKE_Z: float = -0.082
 const STRIKE_Y: float = 0.028
+const LIVE_RISE_SPEED: float = 0.24
+const PILL_WHITE_WIDTH: float = 0.0206
+const PILL_BLACK_WIDTH: float = 0.0148
+const PILL_MIN_LEN_WHITE: float = 0.028
+const PILL_MIN_LEN_BLACK: float = 0.024
 const MAX_BARS: int = 384
+const MAX_LIVE_NOTES: int = 256
 const LOOKAHEAD: float = 4.0
+const NOTE_NAMES: PackedStringArray = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 const HAND_SCENES: Array[PackedScene] = [preload("res://assets/hands/hand_3d_left.glb"), preload("res://assets/hands/hand_3d_right.glb")]
 const ANIME: Shader = preload("res://shaders/hand_3d_anime.gdshader")
 const OUTLINE: Shader = preload("res://shaders/hand_3d_outline.gdshader")
@@ -53,8 +73,16 @@ var hand_controllers: Array[HandIKController] = []
 var _elapsed_time: float = 0.0
 var _hand_lights: Array[OmniLight3D] = []
 var _notes: Array[StageNote] = []
-var _bars: Array[MeshInstance3D] = []
-var _bar_shader: Shader
+var _live_cascade_enabled: bool = false
+var _live_notes: Array[LiveNote] = []
+var _overlay_root: Node2D
+var _overlay_clip: Control
+var _pill_layer: Node2D
+var _flare_layer: Node2D
+var _gaussian_tex: ImageTexture
+var _pill_font: FontVariation
+var _strike_rail_y: float = 0.0
+var _overlay_had_content: bool = false
 var _playback_time: float = 0.0
 var _note_cursor: int = 0
 var _hands_enabled: bool = true
@@ -121,27 +149,51 @@ func _ready() -> void:
 	for midi in range(24, 109, 12):
 		var guide: MeshInstance3D = _box("OctaveGuide%d" % midi, Vector3(0.0005, 0.0004, CASCADE_SPAN * sqrt(1.0 + SLOPE * SLOPE)), Vector3(_rest[midi - 21].x - KeyMap3D.WHITE_STEP * 0.5, STRIKE_Y - 0.0035 + CASCADE_SPAN * 0.5 * SLOPE, STRIKE_Z - CASCADE_SPAN * 0.5), _material(Color("303342"), 0.8, 0.1))
 		guide.rotation.x = atan(SLOPE)
-	_bar_shader = Shader.new()
-	_bar_shader.code = """shader_type spatial;
-render_mode unshaded, cull_disabled;
-uniform vec4 tint : source_color = vec4(0.3,0.8,1.0,1.0);
-uniform vec3 dimensions = vec3(0.019,0.006,0.1);
-void vertex() {
- vec3 p = VERTEX * dimensions;
- float radius = min(0.0025, min(dimensions.x, min(dimensions.y,dimensions.z))*0.45);
- vec3 inner = max(dimensions*0.5-vec3(radius),vec3(0.0001));
- vec3 nearest = clamp(p,-inner,inner);
- vec3 direction = normalize(p-nearest);
- VERTEX = (nearest + direction*radius)/dimensions;
- NORMAL = normalize(direction*dimensions);
-}
-void fragment() {
- ALBEDO = tint.rgb;
- EMISSION = tint.rgb * 1.5;
-}
-"""
+	_pill_font = FontVariation.new()
+	_pill_font.base_font = ThemeDB.fallback_font
+	_pill_font.variation_embolden = 0.28
+	_gaussian_tex = _generate_gaussian_texture(128)
+	_overlay_root = Node2D.new()
+	_overlay_root.name = "CascadeOverlayRoot"
+	add_child(_overlay_root)
+	_overlay_clip = Control.new()
+	_overlay_clip.name = "CascadeOverlayClip"
+	_overlay_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_overlay_clip.clip_contents = true
+	_overlay_root.add_child(_overlay_clip)
+	_pill_layer = Node2D.new()
+	_pill_layer.name = "CascadePillLayer"
+	_pill_layer.draw.connect(_draw_cascade_pills)
+	_overlay_clip.add_child(_pill_layer)
+	_flare_layer = Node2D.new()
+	_flare_layer.name = "CascadeFlareLayer"
+	var flare_additive: CanvasItemMaterial = CanvasItemMaterial.new()
+	flare_additive.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_flare_layer.material = flare_additive
+	_flare_layer.draw.connect(_draw_cascade_flares)
+	_overlay_clip.add_child(_flare_layer)
 	resized.connect(_on_resized)
 	arrange(size)
+
+static func musical_note_name(midi: int) -> String:
+	if midi < 21 or midi > 108:
+		return ""
+	return NOTE_NAMES[midi % 12]
+
+static func _generate_gaussian_texture(size_px: int = 128) -> ImageTexture:
+	var img: Image = Image.create(size_px, size_px, false, Image.FORMAT_RGBA8)
+	var half: float = float(size_px) * 0.5
+	for y: int in range(size_px):
+		for x: int in range(size_px):
+			var dx: float = (float(x) - half + 0.5) / half
+			var dy: float = (float(y) - half + 0.5) / half
+			var r2: float = dx * dx + dy * dy
+			var alpha: float = 0.0
+			if r2 < 1.0:
+				alpha = exp(-r2 * 5.0)
+				alpha *= clampf((1.0 - sqrt(r2)) / 0.25, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	return ImageTexture.create_from_image(img)
 
 func _material(tint: Color, roughness: float, specular: float) -> StandardMaterial3D:
 	var material: StandardMaterial3D = StandardMaterial3D.new()
@@ -270,7 +322,7 @@ func _apply_hand_material(node: Node) -> void:
 	for child: Node in node.get_children():
 		_apply_hand_material(child)
 
-func press_key(midi: int, color: Color) -> void:
+func press_key(midi: int, color: Color, token: int = -1) -> void:
 	var index: int = midi - 21
 	if index < 0 or index >= _keys.size():
 		return
@@ -282,14 +334,71 @@ func press_key(midi: int, color: Color) -> void:
 	_rail_pulse[index] = 1.0
 	_key_colors[index] = color
 	_key_materials[index].emission = color
+	if _live_cascade_enabled:
+		for existing: LiveNote in _live_notes:
+			if existing.midi == midi and existing.released < 0.0:
+				existing.released = _elapsed_time
+		_live_notes.append(LiveNote.new(token, midi, _elapsed_time, color))
+		while _live_notes.size() > MAX_LIVE_NOTES:
+			_live_notes.pop_front()
+		_request_cascade_redraw()
+
+func release_live_note(token: int) -> void:
+	if token < 0:
+		return
+	var changed: bool = false
+	for live_note: LiveNote in _live_notes:
+		if live_note.token == token and live_note.released < 0.0:
+			live_note.released = _elapsed_time
+			changed = true
+	if changed:
+		_request_cascade_redraw()
 
 func release_key(midi: int) -> void:
 	var index: int = midi - 21
 	if index >= 0 and index < _pressed.size():
 		_pressed[index] = 0
+	var changed: bool = false
+	for live_note: LiveNote in _live_notes:
+		if live_note.midi == midi and live_note.released < 0.0:
+			live_note.released = _elapsed_time
+			changed = true
+	if changed:
+		_request_cascade_redraw()
 
 func release_all() -> void:
 	_pressed.fill(0)
+	var changed: bool = false
+	for live_note: LiveNote in _live_notes:
+		if live_note.released < 0.0:
+			live_note.released = _elapsed_time
+			changed = true
+	if changed:
+		_request_cascade_redraw()
+
+func set_live_cascade_enabled(enabled: bool) -> void:
+	if _live_cascade_enabled == enabled:
+		return
+	_live_cascade_enabled = enabled
+	if not _live_cascade_enabled:
+		_live_notes.clear()
+	_overlay_had_content = true
+	_request_cascade_redraw()
+
+func recolor_active_live_notes(color: Color) -> void:
+	var changed: bool = false
+	for live_note: LiveNote in _live_notes:
+		if live_note.released < 0.0:
+			live_note.color = color
+			changed = true
+	if changed:
+		_request_cascade_redraw()
+
+func _request_cascade_redraw() -> void:
+	if _pill_layer != null:
+		_pill_layer.queue_redraw()
+	if _flare_layer != null:
+		_flare_layer.queue_redraw()
 
 func set_hands_visible(enabled: bool) -> void:
 	_hands_enabled = enabled
@@ -305,6 +414,8 @@ func set_notes(notes: Array[StageNote]) -> void:
 	_note_cursor = 0
 	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
 		_note_cursor += 1
+	if not _live_cascade_enabled:
+		_request_cascade_redraw()
 
 func set_playback_time(seconds: float) -> void:
 	if seconds < _playback_time:
@@ -313,6 +424,33 @@ func set_playback_time(seconds: float) -> void:
 
 func set_anticipation_enabled(enabled: bool) -> void:
 	_anticipation_enabled = enabled
+
+func _project_3d(world_pos: Vector3) -> Vector2:
+	if camera == null or stage_viewport == null:
+		return Vector2.ZERO
+	var vp_size: Vector2 = stage_viewport.get_visible_rect().size
+	if vp_size.x <= 1.0 or vp_size.y <= 1.0:
+		return Vector2.ZERO
+	var projected: Vector2 = camera.unproject_position(world_pos)
+	return Vector2(projected.x * size.x / vp_size.x, projected.y * size.y / vp_size.y)
+
+func _cascade_point_3d(x: float, dist: float) -> Vector3:
+	return Vector3(x, STRIKE_Y + dist * SLOPE, STRIKE_Z - dist)
+
+func _update_overlay_bounds() -> void:
+	if _overlay_clip == null:
+		return
+	var rail_p: Vector2 = _project_3d(Vector3(0.0, 0.024, -0.079))
+	if rail_p.y <= 1.0:
+		_strike_rail_y = clampf(size.y * 0.80, 1.0, maxf(1.0, size.y))
+	else:
+		_strike_rail_y = clampf(rail_p.y, 1.0, maxf(1.0, size.y))
+	var new_size: Vector2 = Vector2(maxf(1.0, size.x), _strike_rail_y)
+	var changed: bool = not _overlay_clip.size.is_equal_approx(new_size)
+	_overlay_clip.position = Vector2.ZERO
+	_overlay_clip.size = new_size
+	if changed:
+		_request_cascade_redraw()
 
 func arrange(viewport_size: Vector2) -> void:
 	size = Vector2(maxf(1.0, viewport_size.x), maxf(1.0, viewport_size.y))
@@ -338,6 +476,8 @@ func arrange(viewport_size: Vector2) -> void:
 	camera.fov = fov
 	camera.position = Vector3(0.0, 1.65, z0)
 	camera.rotation_degrees = Vector3(-79.0, 0.0, 0.0)
+	_update_overlay_bounds()
+	_request_cascade_redraw()
 
 func _on_resized() -> void:
 	arrange(size)
@@ -398,42 +538,217 @@ func _update_hands(delta: float) -> void:
 	for side: int in range(hand_controllers.size()):
 		hand_controllers[side].update_hand(plans[side], key_map, delta, _elapsed_time, _strike_serial, _depth)
 
-func _update_cascade() -> void:
-	if world_root == null or _bar_shader == null:
-		return
+func get_visible_pills() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if _live_cascade_enabled:
+		for live_note: LiveNote in _live_notes:
+			var is_black: bool = _is_black(live_note.midi)
+			var min_len: float = PILL_MIN_LEN_BLACK if is_black else PILL_MIN_LEN_WHITE
+			var end_t: float = _elapsed_time if live_note.released < 0.0 else live_note.released
+			var dist_near: float = LIVE_RISE_SPEED * maxf(0.0, _elapsed_time - end_t)
+			if dist_near > CASCADE_SPAN + 0.08:
+				continue
+			var length: float = maxf(min_len, LIVE_RISE_SPEED * maxf(0.0, end_t - live_note.born))
+			var dist_far: float = dist_near + length
+			result.append({
+				"midi": live_note.midi,
+				"label": musical_note_name(live_note.midi),
+				"dist_near": dist_near,
+				"dist_far": dist_far,
+				"color": live_note.color,
+				"is_black": is_black,
+				"held": live_note.released < 0.0
+			})
+		return result
 	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
 		_note_cursor += 1
 	var used: int = 0
-	for index in range(_note_cursor, _notes.size()):
+	for index: int in range(_note_cursor, _notes.size()):
 		var note: StageNote = _notes[index]
 		if note.start > _playback_time + LOOKAHEAD or used >= MAX_BARS:
 			break
 		if note.start + note.duration < _playback_time:
 			continue
-		var near_time: float = clampf(note.start - _playback_time, 0.0, LOOKAHEAD)
-		var far_time: float = clampf(note.start + note.duration - _playback_time, 0.0, LOOKAHEAD)
-		var length: float = maxf((far_time - near_time) / LOOKAHEAD * CASCADE_SPAN, 0.005)
-		var distance: float = (near_time + far_time) * 0.5 / LOOKAHEAD * CASCADE_SPAN
-		if used >= _bars.size():
-			var material: ShaderMaterial = ShaderMaterial.new()
-			material.shader = _bar_shader
-			var new_bar: MeshInstance3D = _box("NoteBar%d" % used, Vector3.ONE, Vector3.ZERO, material)
-			var box_mesh: BoxMesh = new_bar.mesh as BoxMesh
-			box_mesh.subdivide_width = 6
-			box_mesh.subdivide_height = 4
-			box_mesh.subdivide_depth = 6
-			_bars.append(new_bar)
-		var bar: MeshInstance3D = _bars[used]
-		bar.visible = true
-		bar.position = Vector3(_rest[note.midi - 21].x, STRIKE_Y + distance * SLOPE, STRIKE_Z - distance)
-		bar.rotation.x = atan(SLOPE)
-		bar.scale = Vector3(0.012 if _is_black(note.midi) else 0.019, 0.006, length * sqrt(1.0 + SLOPE * SLOPE))
-		var material: ShaderMaterial = bar.material_override as ShaderMaterial
-		material.set_shader_parameter("tint", note.color)
-		material.set_shader_parameter("dimensions", bar.scale)
+		var is_black: bool = _is_black(note.midi)
+		var min_len: float = PILL_MIN_LEN_BLACK if is_black else PILL_MIN_LEN_WHITE
+		var raw_near: float = (note.start - _playback_time) / LOOKAHEAD * CASCADE_SPAN
+		var raw_far: float = maxf((note.start + note.duration - _playback_time) / LOOKAHEAD * CASCADE_SPAN, raw_near + min_len)
+		var dist_near: float = maxf(raw_near, 0.0)
+		var dist_far: float = minf(raw_far, CASCADE_SPAN)
+		if dist_far <= dist_near + 0.002:
+			continue
+		result.append({
+			"midi": note.midi,
+			"label": musical_note_name(note.midi),
+			"dist_near": dist_near,
+			"dist_far": dist_far,
+			"color": note.color,
+			"is_black": is_black,
+			"held": raw_near <= 0.0
+		})
 		used += 1
-	for index in range(used, _bars.size()):
-		_bars[index].visible = false
+	return result
+
+func _update_cascade() -> void:
+	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
+		_note_cursor += 1
+	for index: int in range(_live_notes.size() - 1, -1, -1):
+		var live_note: LiveNote = _live_notes[index]
+		if live_note.released >= 0.0 and LIVE_RISE_SPEED * maxf(0.0, _elapsed_time - live_note.released) > CASCADE_SPAN + 0.15:
+			_live_notes.remove_at(index)
+	_update_overlay_bounds()
+	var has_pills: bool = not _live_notes.is_empty() if _live_cascade_enabled else false
+	if not _live_cascade_enabled:
+		for index: int in range(_note_cursor, _notes.size()):
+			var note: StageNote = _notes[index]
+			if note.start > _playback_time + LOOKAHEAD:
+				break
+			if note.start + note.duration >= _playback_time:
+				has_pills = true
+				break
+	var has_glow: bool = false
+	for index: int in range(_energy.size()):
+		if _energy[index] > 0.01:
+			has_glow = true
+			break
+	var has_content: bool = has_pills or has_glow
+	if visible and (has_content or _overlay_had_content):
+		_request_cascade_redraw()
+	_overlay_had_content = has_content
+
+func _draw_cascade_pills() -> void:
+	if _pill_layer == null or _strike_rail_y <= 1.0:
+		return
+	var pills: Array[Dictionary] = get_visible_pills()
+	for pass_black: int in range(2):
+		var want_black: bool = pass_black == 1
+		for pill: Dictionary in pills:
+			if bool(pill["is_black"]) == want_black:
+				_draw_3d_pill(pill)
+
+func _draw_3d_pill(pill: Dictionary) -> void:
+	if _pill_layer == null or _strike_rail_y <= 1.0 or camera == null:
+		return
+	var midi: int = int(pill["midi"])
+	var index: int = midi - 21
+	if index < 0 or index >= _rest.size():
+		return
+	var d0: float = float(pill["dist_near"])
+	var d1: float = minf(float(pill["dist_far"]), CASCADE_SPAN + 0.08)
+	var len_3d: float = maxf(0.004, d1 - d0)
+	var d_high: float = d0 + len_3d
+	var center_x: float = _rest[index].x
+	var is_black: bool = bool(pill["is_black"])
+	var width_3d: float = PILL_BLACK_WIDTH if is_black else PILL_WHITE_WIDTH
+	var half_w: float = width_3d * 0.5
+	var p0: Vector3 = _cascade_point_3d(center_x, d0)
+	var p1: Vector3 = _cascade_point_3d(center_x, d_high)
+	if camera.is_position_behind(p0) or camera.is_position_behind(p1):
+		return
+	var r: float = minf(width_3d * 0.46, len_3d * 0.50)
+	var x_left: float = center_x - half_w
+	var x_right: float = center_x + half_w
+	var corner_x: PackedFloat32Array = PackedFloat32Array([x_left + r, x_right - r, x_right - r, x_left + r])
+	var corner_d: PackedFloat32Array = PackedFloat32Array([d_high - r, d_high - r, d0 + r, d0 + r])
+	var points: PackedVector2Array = PackedVector2Array()
+	var min_y: float = INF
+	var max_y: float = -INF
+	for corner: int in range(4):
+		var cx: float = corner_x[corner]
+		var cd: float = corner_d[corner]
+		for seg: int in range(7):
+			var angle: float = PI + float(corner) * PI * 0.5 + float(seg) * PI / 12.0
+			var pt: Vector2 = _project_3d(_cascade_point_3d(cx + cos(angle) * r, cd - sin(angle) * r))
+			min_y = minf(min_y, pt.y)
+			max_y = maxf(max_y, pt.y)
+			if points.is_empty() or points[points.size() - 1].distance_squared_to(pt) > 0.01:
+				points.append(pt)
+	if points.size() < 3 or max_y < -4.0 or min_y > _strike_rail_y + 4.0:
+		return
+	var base_col: Color = pill["color"]
+	if is_black:
+		base_col = base_col.darkened(0.10)
+	var fill_col: Color = Color(base_col.r, base_col.g, base_col.b, 0.94)
+	_pill_layer.draw_colored_polygon(points, fill_col)
+	var outline_pts: PackedVector2Array = points.duplicate()
+	outline_pts.append(points[0])
+	_pill_layer.draw_polyline(outline_pts, Color(1.0, 1.0, 1.0, 0.72), 1.35, true)
+	var label: String = str(pill["label"])
+	if label.is_empty():
+		return
+	var bottom_p: Vector2 = _project_3d(p0)
+	var top_p: Vector2 = _project_3d(p1)
+	var vis_d1: float = d_high
+	if top_p.y < 0.0 and bottom_p.y > top_p.y + 1.0:
+		var vis_frac: float = clampf(bottom_p.y / (bottom_p.y - top_p.y), 0.12, 1.0)
+		vis_d1 = lerpf(d0, d_high, vis_frac)
+	var d_min_lbl: float = d0 + r * 0.85
+	var d_max_lbl: float = maxf(d_min_lbl, d_high - r * 0.85)
+	var label_d: float = clampf((d0 + vis_d1) * 0.5, d_min_lbl, d_max_lbl)
+	var center_2d: Vector2 = _project_3d(_cascade_point_3d(center_x, label_d))
+	var left_2d: Vector2 = _project_3d(_cascade_point_3d(x_left, label_d))
+	var right_2d: Vector2 = _project_3d(_cascade_point_3d(x_right, label_d))
+	var proj_w: float = maxf(0.0, right_2d.x - left_2d.x)
+	var proj_h: float = maxf(0.0, minf(bottom_p.y, _strike_rail_y) - maxf(top_p.y, 0.0))
+	var font: Font = _pill_font if _pill_font != null else ThemeDB.fallback_font
+	var font_size: int = clampi(int(proj_w * 0.56), 5, 16)
+	var label_size: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
+	var max_w: float = maxf(0.0, proj_w - 2.0)
+	while font_size > 5 and (label_size.x > max_w or float(font_size) + 2.0 > proj_h):
+		font_size -= 1
+		label_size = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size)
+	if label_size.x <= max_w and proj_h >= float(font_size) + 2.0:
+		var lum: float = fill_col.r * 0.2126 + fill_col.g * 0.7152 + fill_col.b * 0.0722
+		var text_col: Color = Color("#141c2a") if lum > 0.74 else Color.WHITE
+		var baseline_y: float = center_2d.y + (font.get_ascent(font_size) - font.get_descent(font_size)) * 0.5
+		_pill_layer.draw_string(font, Vector2(center_2d.x - label_size.x * 0.5, baseline_y), label, HORIZONTAL_ALIGNMENT_LEFT, -1.0, font_size, text_col)
+
+func _draw_cascade_flares() -> void:
+	if _flare_layer == null or _gaussian_tex == null or _strike_rail_y <= 1.0 or _rest.size() < 88:
+		return
+	var x_left: float = _project_3d(Vector3(_rest[0].x - KeyMap3D.WHITE_WIDTH * 0.5, 0.024, -0.079)).x
+	var x_right: float = _project_3d(Vector3(_rest[87].x + KeyMap3D.WHITE_WIDTH * 0.5, 0.024, -0.079)).x
+	if x_right <= x_left:
+		x_left = 0.0
+		x_right = size.x
+	var active_count: int = 0
+	var avg_color: Color = Color(0.0, 0.0, 0.0, 0.0)
+	for index: int in range(_energy.size()):
+		if _energy[index] > 0.01:
+			active_count += 1
+			avg_color += _key_colors[index]
+	var line_tint: Color = Color(0.55, 0.66, 1.0)
+	if active_count > 0:
+		line_tint = (avg_color / float(active_count)).lerp(Color(0.85, 0.90, 1.0), 0.35)
+	var line_y: float = _strike_rail_y - 1.0
+	for spread: int in range(8, 0, -1):
+		var a: float = (0.006 + 0.018 * exp(-float(spread) * 0.32)) * (1.35 if active_count > 0 else 0.75)
+		_flare_layer.draw_line(Vector2(x_left, line_y), Vector2(x_right, line_y), Color(line_tint.r, line_tint.g, line_tint.b, a), float(spread) * 2.0, true)
+	_flare_layer.draw_line(Vector2(x_left, line_y), Vector2(x_right, line_y), Color(1.4, 1.4, 1.4, 0.55), 1.2, true)
+	if active_count == 0:
+		return
+	var density_scale: float = clampf(1.0 / sqrt(maxf(1.0, float(active_count) * 0.40)), 0.28, 1.0)
+	for index: int in range(_energy.size()):
+		if _energy[index] <= 0.01:
+			continue
+		var midi: int = index + 21
+		var key_x: float = _rest[index].x
+		var half_w: float = (KeyMap3D.BLACK_WIDTH if _is_black(midi) else KeyMap3D.WHITE_WIDTH) * 0.5
+		var base_pos: Vector2 = _project_3d(Vector3(key_x, 0.024, -0.079))
+		var edge_l: Vector2 = _project_3d(Vector3(key_x - half_w, 0.024, -0.079))
+		var edge_r: Vector2 = _project_3d(Vector3(key_x + half_w, 0.024, -0.079))
+		var key_w: float = maxf(6.0, absf(edge_r.x - edge_l.x))
+		var pulse: float = _rail_pulse[index]
+		var e_norm: float = clampf(_energy[index] * 0.5, 0.0, 1.0)
+		var tint: Color = _key_colors[index]
+		var fw: float = key_w * (4.4 + 1.4 * pulse)
+		var fh: float = key_w * (3.0 + 1.0 * pulse)
+		var f_alpha: float = clampf((0.42 * e_norm + 0.36 * pulse) * density_scale, 0.0, 0.92)
+		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - fw * 0.5, _strike_rail_y - fh * 0.5, fw, fh), false, Color(tint.r * 1.25, tint.g * 1.25, tint.b * 1.25, f_alpha))
+		var cw: float = key_w * (2.2 + 0.7 * pulse)
+		var ch: float = key_w * (1.6 + 0.5 * pulse)
+		var c_alpha: float = clampf((0.55 * e_norm + 0.50 * pulse) * density_scale, 0.0, 1.0)
+		_flare_layer.draw_texture_rect(_gaussian_tex, Rect2(base_pos.x - cw * 0.5, _strike_rail_y - ch * 0.5, cw, ch), false, Color(1.75, 1.55, 1.65, c_alpha))
 
 func _update_hand_lights(damping: float) -> void:
 	for side in range(_hand_lights.size()):

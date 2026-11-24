@@ -170,6 +170,7 @@ func _ready() -> void:
 	stage_3d.name = "PianoStage3D"
 	add_child(stage_3d)
 	stage_3d.set_anticipation_enabled(bot_enabled)
+	stage_3d.set_live_cascade_enabled(not bot_enabled)
 	# Composite controls after the world glow: white keys and UI keep their
 	# exact colors and only the synth bars contribute to bloom.
 	ui_layer = CanvasLayer.new()
@@ -251,6 +252,7 @@ func _process(delta: float) -> void:
 	if stage_3d != null and stage_3d.visible:
 		stage_3d.set_playback_time(_get_current_song_time())
 		stage_3d.set_anticipation_enabled(bot_enabled)
+		stage_3d.set_live_cascade_enabled(not bot_enabled)
 
 	if visualizer != null:
 		visualizer.melody_color = active_color
@@ -707,12 +709,16 @@ func set_bot_enabled(enabled: bool) -> void:
 			_refresh()
 		if stage_3d != null:
 			stage_3d.set_anticipation_enabled(bot_enabled)
+			stage_3d.set_live_cascade_enabled(not bot_enabled)
 		if menu != null:
 			menu.set_creator_bot(bot_enabled, false)
 		return
 	bot_enabled = next_state
 	_bot_finishing = false
 	_bot_elapsed = 0.0
+	if stage_3d != null:
+		stage_3d.set_anticipation_enabled(bot_enabled)
+		stage_3d.set_live_cascade_enabled(not bot_enabled)
 	if bot_enabled:
 		auto_enabled = false
 		_bot_completed = false
@@ -725,8 +731,6 @@ func set_bot_enabled(enabled: bool) -> void:
 		_bot_note_released = true
 		if visualizer != null:
 			visualizer.set_playback_context(steps, step_index, 0.0, bot_bpm, false)
-	if stage_3d != null:
-		stage_3d.set_anticipation_enabled(bot_enabled)
 	if menu != null:
 		menu.set_creator_bot(bot_enabled, false)
 	_refresh()
@@ -1019,6 +1023,7 @@ func _load_song(index: int) -> void:
 	popup.show()
 	if stage_3d != null:
 		stage_3d.set_anticipation_enabled(false)
+		stage_3d.set_live_cascade_enabled(true)
 	if creator_overlay != null:
 		creator_overlay.trigger_toast("Hoja cargada: %s · Activa Auto (+) o Ctrl+P para Bot" % song.title)
 	_refresh()
@@ -1046,6 +1051,8 @@ func _set_appearance(color: Color, use_rainbow: bool, light_setting: Variant = "
 	if creator_overlay != null:
 		creator_overlay.set_active_color(active_color)
 	_sync_stage_3d_notes()
+	if stage_3d != null and not rainbow:
+		stage_3d.recolor_active_live_notes(active_color)
 	save_user_settings()
 
 func _change_instrument(id: String) -> void:
@@ -1120,6 +1127,7 @@ func _popup_action(action: String) -> void:
 			auto_enabled = not auto_enabled and not steps.is_empty()
 			if stage_3d != null:
 				stage_3d.set_anticipation_enabled(false)
+				stage_3d.set_live_cascade_enabled(true)
 		"Paste":
 			if drafts.has(selected_song):
 				drafts.erase(selected_song)
@@ -1390,7 +1398,7 @@ func _press_source(source: Variant, notes: Array, note_velocities: Dictionary = 
 		first_color = color
 		keyboard.press(pitch, color)
 		if stage_3d != null:
-			stage_3d.press_key(pitch, color)
+			stage_3d.press_key(pitch, color, serial)
 		visualizer.note_on(serial, pitch, color)
 	sources[source] = group
 	if not pitches.is_empty():
@@ -1413,8 +1421,10 @@ func _release_source(source: Variant) -> void:
 	for voice in sources[source]:
 		audio.note_off(voice.token)
 		keyboard.release(voice.midi)
-		if stage_3d != null and (keyboard == null or not keyboard.active.has(voice.midi)):
-			stage_3d.release_key(voice.midi)
+		if stage_3d != null:
+			stage_3d.release_live_note(voice.token)
+			if keyboard == null or not keyboard.active.has(voice.midi):
+				stage_3d.release_key(voice.midi)
 		visualizer.note_off(voice.token)
 	sources.erase(source)
 

@@ -726,6 +726,148 @@ func _run() -> void:
 	check(int(tenth_l["count"]) >= 1 and int(tenth_r["count"]) >= 1 and int(tenth_l["count"]) + int(tenth_r["count"]) == 3 and float(tenth_l["max_err"]) < 0.006 and float(tenth_r["max_err"]) < 0.006, "10th [48, 55, 64] splits automatically across both hands within 6mm (L=%d/%.2fmm, R=%d/%.2fmm)" % [int(tenth_l["count"]), float(tenth_l["max_err"]) * 1000.0, int(tenth_r["count"]), float(tenth_r["max_err"]) * 1000.0])
 	stage.release_all()
 
+	# Regression: perspective pill cascade, white-bordered note names, strike rail clip, and rising live cascade in Normal/Auto modes
+	check(PianoStage3DClass.musical_note_name(71) == "B" and PianoStage3DClass.musical_note_name(74) == "D" and PianoStage3DClass.musical_note_name(61) == "C#", "Musical note names resolve natural and sharp pitches without octave numbers")
+	check(PianoStage3DClass.musical_note_name(20).is_empty() and PianoStage3DClass.musical_note_name(109).is_empty(), "Musical note names reject out-of-range pitches")
+	check(stage._overlay_clip != null and stage._overlay_clip.clip_contents and stage._overlay_clip.size.y > 0.0 and stage._overlay_clip.size.y < p_mid.y, "Cascade overlay clips cleanly strictly above 3D keys (clip_h=%.1f, key_mid_y=%.1f)" % [stage._overlay_clip.size.y if stage._overlay_clip != null else -1.0, p_mid.y])
+
+	var loaded_sheet: Array[PianoStage3D.StageNote] = [
+		PianoStage3D.StageNote.new(71, 0.2, 0.4, Color.RED),
+		PianoStage3D.StageNote.new(74, 0.4, 0.4, Color.RED)
+	]
+	stage.set_notes(loaded_sheet)
+	stage.set_playback_time(0.0)
+	stage.set_live_cascade_enabled(true)
+	for _f in range(5):
+		stage._process(0.016)
+	check(stage.get_visible_pills().is_empty(), "Live cascade mode hides frozen sheet notes when no keys are struck")
+
+	stage.press_key(71, Color.RED, 101)
+	stage.press_key(74, Color.RED, 102)
+	var held_pills_0: Array[Dictionary] = stage.get_visible_pills()
+	check(held_pills_0.size() == 2, "Pressing B4 (71) and D5 (74) creates 2 live pills")
+	var found_b_0: Dictionary = {}
+	var found_d_0: Dictionary = {}
+	for p: Dictionary in held_pills_0:
+		if int(p["midi"]) == 71:
+			found_b_0 = p
+		elif int(p["midi"]) == 74:
+			found_d_0 = p
+	check(str(found_b_0.get("label", "")) == "B" and str(found_d_0.get("label", "")) == "D", "Live pills carry exact note labels B and D")
+	check(is_zero_approx(float(found_b_0.get("dist_near", -1.0))) and is_zero_approx(float(found_d_0.get("dist_near", -1.0))), "Newly held live pills anchor at dist_near == 0.0")
+	var len_b_before: float = float(found_b_0.get("dist_far", 0.0)) - float(found_b_0.get("dist_near", 0.0))
+	for _f in range(12):
+		stage._process(0.016)
+	var held_pills_1: Array[Dictionary] = stage.get_visible_pills()
+	var len_b_after: float = 0.0
+	for p: Dictionary in held_pills_1:
+		if int(p["midi"]) == 71:
+			len_b_after = float(p["dist_far"]) - float(p["dist_near"])
+	check(len_b_after > len_b_before + 0.01, "Held live pill elongates smoothly over time (%.4f -> %.4f)" % [len_b_before, len_b_after])
+
+	stage.release_key(71)
+	stage.release_key(74)
+	stage._process(0.016)
+	var rise_1: Array[Dictionary] = stage.get_visible_pills()
+	var d_b_1: float = -1.0
+	for p: Dictionary in rise_1:
+		if int(p["midi"]) == 71:
+			d_b_1 = float(p["dist_near"])
+	for _f in range(10):
+		stage._process(0.016)
+	var rise_2: Array[Dictionary] = stage.get_visible_pills()
+	var d_b_2: float = -1.0
+	for p: Dictionary in rise_2:
+		if int(p["midi"]) == 71:
+			d_b_2 = float(p["dist_near"])
+	check(d_b_1 > 0.0 and d_b_2 > d_b_1 + 0.02, "Released live pills detach and climb upward monotonically (%.4f -> %.4f)" % [d_b_1, d_b_2])
+
+	for _f in range(380):
+		stage._process(0.016)
+	check(stage.get_visible_pills().is_empty(), "Live pills prune cleanly once they travel above cascade span")
+
+	stage.press_key(71, Color.RED, 201)
+	for _f in range(5):
+		stage._process(0.016)
+	stage.press_key(71, Color.RED, 202)
+	stage._process(0.016)
+	var retrigger_pills: Array[Dictionary] = stage.get_visible_pills()
+	var retrigger_b_count: int = 0
+	var has_rising_b: bool = false
+	var has_anchored_b: bool = false
+	for p: Dictionary in retrigger_pills:
+		if int(p["midi"]) == 71 and str(p["label"]) == "B":
+			retrigger_b_count += 1
+			if float(p["dist_near"]) > 0.0:
+				has_rising_b = true
+			else:
+				has_anchored_b = true
+	check(retrigger_b_count == 2 and has_rising_b and has_anchored_b, "Rapid retrigger on same pitch spawns distinct climbing and anchored B pills")
+	stage.release_all()
+	for _f in range(10):
+		stage._process(0.016)
+	stage._live_notes.clear()
+	stage.set_live_cascade_enabled(false)
+
+	# Main integration: Normal mode, Auto mode, and Bot mode cascade behavior
+	app.set_bot_enabled(false)
+	app.auto_enabled = false
+	app.stage_3d._live_notes.clear()
+	app.set_stage_mode("3d")
+	app.transposition = 0
+	app.user_transposition = 0
+	app.steps.clear()
+	app.steps.append({"notes": [71, 74], "transposition": 0})
+	app.steps.append({"notes": [72, 76], "transposition": 0})
+	app.step_delays.clear()
+	app.step_delays.append(0.35)
+	app.step_delays.append(0.35)
+	app.step_index = 0
+	app._sync_stage_3d_notes()
+	app._process(0.016)
+	app.stage_3d._process(0.016)
+	check(app.stage_3d._live_cascade_enabled and app.stage_3d.get_visible_pills().is_empty(), "Main Normal mode enables live rising cascade and hides frozen sheet bars")
+	app._press_source("normal-pills", [71, 74])
+	var normal_pills: Array[Dictionary] = app.stage_3d.get_visible_pills()
+	var normal_labels: PackedStringArray = PackedStringArray()
+	for p: Dictionary in normal_pills:
+		normal_labels.append(str(p["label"]))
+	check(normal_pills.size() == 2 and "B" in normal_labels and "D" in normal_labels, "Main Normal mode key press spawns B and D pills")
+	app._release_source("normal-pills")
+	app.stage_3d._process(0.016)
+	var normal_released_pills: Array[Dictionary] = app.stage_3d.get_visible_pills()
+	check(normal_released_pills.size() == 2 and float(normal_released_pills[0]["dist_near"]) > 0.0 and float(normal_released_pills[1]["dist_near"]) > 0.0, "Releasing Normal mode source detaches rising pills to travel upward")
+
+	app.stage_3d._live_notes.clear()
+	app._popup_action("Auto")
+	app._process(0.016)
+	app.stage_3d._process(0.016)
+	check(app.auto_enabled and not app.bot_enabled and app.stage_3d._live_cascade_enabled, "Auto mode keeps 3D live pill cascade active without Bot")
+	check(app.stage_3d.get_visible_pills().is_empty(), "Auto mode starts with clean stage without frozen sheet bars")
+	var auto_press_ev: InputEventKey = InputEventKey.new()
+	auto_press_ev.keycode = KEY_F
+	auto_press_ev.physical_keycode = KEY_F
+	auto_press_ev.pressed = true
+	app._input(auto_press_ev)
+	var auto_pills: Array[Dictionary] = app.stage_3d.get_visible_pills()
+	var auto_labels: PackedStringArray = PackedStringArray()
+	for p: Dictionary in auto_pills:
+		auto_labels.append(str(p["label"]))
+	check(auto_pills.size() == 2 and "B" in auto_labels and "D" in auto_labels, "Auto mode step input spawns rising pills with musical labels B and D")
+	var auto_release_ev: InputEventKey = InputEventKey.new()
+	auto_release_ev.keycode = KEY_F
+	auto_release_ev.physical_keycode = KEY_F
+	auto_release_ev.pressed = false
+	app._input(auto_release_ev)
+
+	app.step_index = 0
+	app.set_bot_enabled(true)
+	check(app.bot_enabled and not app.stage_3d._live_cascade_enabled, "Bot mode switches 3D cascade to falling sheet mode")
+	var bot_pills: Array[Dictionary] = app.stage_3d.get_visible_pills()
+	check(not bot_pills.is_empty() and str(bot_pills[0]["label"]) in ["B", "D"], "Bot mode falling pills carry musical note labels")
+	app.set_bot_enabled(false)
+	check(app.stage_3d._live_cascade_enabled and app.stage_3d._live_notes.is_empty(), "Disabling Bot restores live cascade mode with cleared live pills")
+
 	stage.queue_free()
 	app.queue_free()
 	await process_frame
