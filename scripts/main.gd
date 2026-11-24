@@ -67,6 +67,7 @@ var audio: Node
 var visualizer: Control
 var stage_3d: PianoStage3D
 var stage_mode: String = "3d"
+var auto_cascade_mode: String = "rising"
 var keyboard: Control
 var panel: Panel
 var ui_layer: CanvasLayer
@@ -169,8 +170,7 @@ func _ready() -> void:
 	stage_3d = Stage3D.new()
 	stage_3d.name = "PianoStage3D"
 	add_child(stage_3d)
-	stage_3d.set_anticipation_enabled(bot_enabled)
-	stage_3d.set_live_cascade_enabled(not bot_enabled)
+	_sync_stage_3d_cascade_mode()
 	# Composite controls after the world glow: white keys and UI keep their
 	# exact colors and only the synth bars contribute to bloom.
 	ui_layer = CanvasLayer.new()
@@ -251,13 +251,12 @@ func _process(delta: float) -> void:
 
 	if stage_3d != null and stage_3d.visible:
 		stage_3d.set_playback_time(_get_current_song_time())
-		stage_3d.set_anticipation_enabled(bot_enabled)
-		stage_3d.set_live_cascade_enabled(not bot_enabled)
+		_sync_stage_3d_cascade_mode()
 
 	if visualizer != null:
 		visualizer.melody_color = active_color
 		visualizer.set_playback_timing(step_delays, _bot_current_delay if bot_enabled else _get_step_delay(step_index), user_transposition)
-		visualizer.set_playback_context(steps, steps.size() if _bot_finishing else step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or auto_enabled)
+		visualizer.set_playback_context(steps, steps.size() if _bot_finishing else step_index, _bot_elapsed / maxf(0.001, _bot_current_delay) if bot_enabled else 0.0, bot_bpm, bot_enabled or (auto_enabled and auto_cascade_mode == "falling"))
 
 	if visualizer != null and keyboard != null:
 		if bot_enabled:
@@ -291,6 +290,8 @@ func _build_ui() -> void:
 	menu.appearance_changed.connect(_set_appearance)
 	menu.anime_hands_toggled.connect(set_anime_hands_enabled)
 	menu.stage_3d_toggled.connect(func(enabled: bool) -> void: set_stage_mode("3d" if enabled else "2d"))
+	menu.auto_cascade_mode_changed.connect(set_auto_cascade_mode)
+	menu.set_auto_cascade_mode(auto_cascade_mode, false)
 	menu.instrument_changed.connect(_change_instrument)
 	menu.bar_style_changed.connect(_change_bar_style)
 	menu.reverb_preset_changed.connect(_change_reverb_preset)
@@ -707,18 +708,14 @@ func set_bot_enabled(enabled: bool) -> void:
 		if bot_enabled and auto_enabled:
 			auto_enabled = false
 			_refresh()
-		if stage_3d != null:
-			stage_3d.set_anticipation_enabled(bot_enabled)
-			stage_3d.set_live_cascade_enabled(not bot_enabled)
+		_sync_stage_3d_cascade_mode()
 		if menu != null:
 			menu.set_creator_bot(bot_enabled, false)
 		return
 	bot_enabled = next_state
 	_bot_finishing = false
 	_bot_elapsed = 0.0
-	if stage_3d != null:
-		stage_3d.set_anticipation_enabled(bot_enabled)
-		stage_3d.set_live_cascade_enabled(not bot_enabled)
+	_sync_stage_3d_cascade_mode()
 	if bot_enabled:
 		auto_enabled = false
 		_bot_completed = false
@@ -731,6 +728,9 @@ func set_bot_enabled(enabled: bool) -> void:
 		_bot_note_released = true
 		if visualizer != null:
 			visualizer.set_playback_context(steps, step_index, 0.0, bot_bpm, false)
+	if stage_3d != null:
+		stage_3d.set_playback_time(_get_current_song_time())
+		stage_3d.snap_cascade_clock()
 	if menu != null:
 		menu.set_creator_bot(bot_enabled, false)
 	_refresh()
@@ -774,6 +774,36 @@ func set_stage_mode(mode: String) -> void:
 	stage_mode = mode if mode in ["3d", "2d"] else "3d"
 	_sync_stage_mode()
 	save_user_settings()
+
+func _stage_3d_uses_live_cascade() -> bool:
+	if bot_enabled:
+		return false
+	if auto_enabled and auto_cascade_mode == "falling":
+		return false
+	return true
+
+func _sync_stage_3d_cascade_mode() -> void:
+	if stage_3d == null:
+		return
+	stage_3d.set_anticipation_enabled(bot_enabled)
+	stage_3d.set_smooth_cascade_clock((not bot_enabled) and auto_enabled and auto_cascade_mode == "falling")
+	stage_3d.set_live_cascade_enabled(_stage_3d_uses_live_cascade())
+
+func set_auto_cascade_mode(mode: String) -> void:
+	auto_cascade_mode = "falling" if mode == "falling" else "rising"
+	if stage_3d != null:
+		stage_3d.set_playback_time(_get_current_song_time())
+		_sync_stage_3d_cascade_mode()
+		stage_3d.snap_cascade_clock()
+	if menu != null and menu.has_method("set_auto_cascade_mode"):
+		menu.set_auto_cascade_mode(auto_cascade_mode, false)
+	save_user_settings()
+
+func toggle_auto_cascade_mode() -> void:
+	set_auto_cascade_mode("falling" if auto_cascade_mode == "rising" else "rising")
+	if creator_overlay != null:
+		var mode_label: String = "En cascada" if auto_cascade_mode == "falling" else "Desde abajo"
+		creator_overlay.trigger_toast("Notas en Auto: %s (Ctrl+N)" % mode_label)
 
 func _sync_stage_mode() -> void:
 	if stage_mode not in ["3d", "2d"]:
@@ -839,6 +869,7 @@ func save_user_settings(path: String = settings_path) -> void:
 	cfg.set_value("appearance", "active_color", "#" + active_color.to_html(false))
 	cfg.set_value("appearance", "rainbow", rainbow)
 	cfg.set_value("appearance", "stage_mode", stage_mode)
+	cfg.set_value("appearance", "auto_cascade_mode", auto_cascade_mode)
 	if keyboard != null:
 		cfg.set_value("appearance", "anime_hands_enabled", keyboard.anime_hands_enabled)
 		cfg.set_value("appearance", "hands_mode", keyboard.hands_mode)
@@ -875,6 +906,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 		return false
 	_loading_settings = true
 	set_stage_mode(str(cfg.get_value("appearance", "stage_mode", "3d")))
+	set_auto_cascade_mode(str(cfg.get_value("appearance", "auto_cascade_mode", "rising")))
 	set_anime_hands_enabled(bool(cfg.get_value("appearance", "anime_hands_enabled", true)))
 	set_hands_mode(str(cfg.get_value("appearance", "hands_mode", "3d")))
 	var col_str = str(cfg.get_value("appearance", "active_color", "#" + active_color.to_html(false)))
@@ -1022,8 +1054,9 @@ func _load_song(index: int) -> void:
 	menu.show_section("sheet")
 	popup.show()
 	if stage_3d != null:
-		stage_3d.set_anticipation_enabled(false)
-		stage_3d.set_live_cascade_enabled(true)
+		stage_3d.set_playback_time(_get_current_song_time())
+		_sync_stage_3d_cascade_mode()
+		stage_3d.snap_cascade_clock()
 	if creator_overlay != null:
 		creator_overlay.trigger_toast("Hoja cargada: %s · Activa Auto (+) o Ctrl+P para Bot" % song.title)
 	_refresh()
@@ -1126,8 +1159,9 @@ func _popup_action(action: String) -> void:
 				set_bot_enabled(false)
 			auto_enabled = not auto_enabled and not steps.is_empty()
 			if stage_3d != null:
-				stage_3d.set_anticipation_enabled(false)
-				stage_3d.set_live_cascade_enabled(true)
+				stage_3d.set_playback_time(_get_current_song_time())
+				_sync_stage_3d_cascade_mode()
+				stage_3d.snap_cascade_clock()
 		"Paste":
 			if drafts.has(selected_song):
 				drafts.erase(selected_song)
@@ -1165,6 +1199,9 @@ func _reset_auto() -> void:
 	_bot_completed = false
 	var base_t = steps[0].transposition if not steps.is_empty() and steps[0].transposition != null else 0
 	transposition = base_t + user_transposition
+	if stage_3d != null:
+		stage_3d.set_playback_time(_get_current_song_time())
+		stage_3d.snap_cascade_clock()
 	_refresh_progress()
 	_refresh()
 
@@ -1218,6 +1255,9 @@ func _compile_sheet() -> void:
 		creator_overlay.update_steps(steps, step_index, false)
 	_sync_creator_song_title()
 	_sync_stage_3d_notes()
+	if stage_3d != null:
+		_sync_stage_3d_cascade_mode()
+		stage_3d.snap_cascade_clock()
 
 func _blur() -> void:
 	sheet_text_edit.release_focus()
@@ -1315,6 +1355,10 @@ func _input(event: InputEvent) -> void:
 				toggle_bot_mode()
 				get_viewport().set_input_as_handled()
 				return
+			KEY_N:
+				toggle_auto_cascade_mode()
+				get_viewport().set_input_as_handled()
+				return
 		if auto_enabled:
 			return
 		if not Keymap.ROBLOX_CTRL_LOW.has(code) and not Keymap.ROBLOX_CTRL_HIGH.has(code):
@@ -1369,6 +1413,8 @@ func _input(event: InputEvent) -> void:
 				step_index = 0
 			else:
 				step_index = steps.size() - 1
+			if stage_3d != null:
+				stage_3d.set_playback_time(_get_current_song_time())
 			_refresh_progress()
 	elif not auto_enabled:
 		var midi = Keymap.manual_note(code, event.shift_pressed, event.ctrl_pressed)

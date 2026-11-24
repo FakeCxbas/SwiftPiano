@@ -12,6 +12,7 @@ signal anime_hands_toggled(enabled: bool)
 var anime_hands_toggle: CheckButton
 signal stage_3d_toggled(enabled: bool)
 var stage_3d_toggle: CheckButton
+signal auto_cascade_mode_changed(mode: String)
 
 signal appearance_changed(color: Color, rainbow: bool, light_mode: Variant)
 signal instrument_changed(id: String)
@@ -186,6 +187,9 @@ var song_list: ItemList
 var color_picker: ColorPickerButton
 var rainbow_toggle: CheckButton
 var rhythm_flash_toggle: CheckButton
+var current_auto_cascade_mode: String = "rising"
+var auto_cascade_buttons: Dictionary = {}
+var sheet_auto_cascade_btn: Button
 var header: Label
 var song_title: LineEdit
 var song_field: LineEdit
@@ -470,6 +474,14 @@ func _build_sheet() -> void:
 		popup_buttons[entry[0]] = item
 		item.pressed.connect(func(): action.emit(entry[0]))
 		toolbar.add_child(item)
+	sheet_auto_cascade_btn = button("Notas Auto: Desde abajo")
+	sheet_auto_cascade_btn.clip_text = false
+	sheet_auto_cascade_btn.custom_minimum_size.x = 175
+	sheet_auto_cascade_btn.tooltip_text = "Alterna en modo Auto entre notas ascendentes (Desde abajo) y descendentes (En cascada). Atajo: Ctrl+N"
+	sheet_auto_cascade_btn.pressed.connect(func() -> void:
+		set_auto_cascade_mode("falling" if current_auto_cascade_mode == "rising" else "rising", true))
+	popup_buttons["AutoCascade"] = sheet_auto_cascade_btn
+	toolbar.add_child(sheet_auto_cascade_btn)
 	sheet_text_edit = TextEdit.new()
 	sheet_text_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	sheet_text_edit.placeholder_text = "Carga una canción de Biblioteca o pega tu hoja aquí."
@@ -681,6 +693,23 @@ func _build_appearance() -> void:
 	stage_3d_toggle.focus_mode = Control.FOCUS_NONE
 	stage_3d_toggle.toggled.connect(func(enabled: bool) -> void: stage_3d_toggled.emit(enabled))
 	box.add_child(stage_3d_toggle)
+	var auto_cascade_row: HFlowContainer = HFlowContainer.new()
+	auto_cascade_row.add_theme_constant_override("h_separation", 8)
+	auto_cascade_row.add_theme_constant_override("v_separation", 8)
+	box.add_child(auto_cascade_row)
+	var auto_cascade_lbl: Label = label("Notas en Auto (Ctrl+N):", 14)
+	auto_cascade_lbl.custom_minimum_size = Vector2(180, 32)
+	auto_cascade_row.add_child(auto_cascade_lbl)
+	for entry in [["rising", "Desde abajo"], ["falling", "En cascada"]]:
+		var mode_id: String = entry[0]
+		var mode_btn: Button = button(entry[1])
+		mode_btn.clip_text = false
+		mode_btn.custom_minimum_size = Vector2(130, 34)
+		mode_btn.pressed.connect(func() -> void:
+			set_auto_cascade_mode(mode_id, true))
+		auto_cascade_buttons[mode_id] = mode_btn
+		auto_cascade_row.add_child(mode_btn)
+	set_auto_cascade_mode(current_auto_cascade_mode, false)
 	
 	box = _studio_page(tabs, "Efectos")
 	var sep_bar = HSeparator.new()
@@ -1200,6 +1229,17 @@ func set_stage_3d_enabled(enabled: bool) -> void:
 	if stage_3d_toggle != null:
 		stage_3d_toggle.set_pressed_no_signal(enabled)
 
+func set_auto_cascade_mode(mode: String, emit_sig: bool = false) -> void:
+	current_auto_cascade_mode = "falling" if mode == "falling" else "rising"
+	for key in auto_cascade_buttons:
+		StudioSkin.instrument_button(auto_cascade_buttons[key], key == current_auto_cascade_mode, chosen_color)
+	if sheet_auto_cascade_btn != null:
+		var mode_label: String = "En cascada" if current_auto_cascade_mode == "falling" else "Desde abajo"
+		sheet_auto_cascade_btn.text = "Notas Auto: " + mode_label
+		StudioSkin.instrument_button(sheet_auto_cascade_btn, current_auto_cascade_mode == "falling", chosen_color)
+	if emit_sig:
+		auto_cascade_mode_changed.emit(current_auto_cascade_mode)
+
 func apply_appearance_state(color: Color, use_rainbow: bool, light_id: String = current_light_mode) -> void:
 	chosen_color = Color(color.r, color.g, color.b, 1.0)
 	current_light_mode = light_id
@@ -1239,6 +1279,10 @@ func _sync_accent_widgets() -> void:
 		StudioSkin.instrument_button(bar_style_buttons[key], key == current_bar_style, chosen_color)
 	for key in light_mode_buttons:
 		StudioSkin.instrument_button(light_mode_buttons[key], key == current_light_mode, chosen_color)
+	for key in auto_cascade_buttons:
+		StudioSkin.instrument_button(auto_cascade_buttons[key], key == current_auto_cascade_mode, chosen_color)
+	if sheet_auto_cascade_btn != null:
+		StudioSkin.instrument_button(sheet_auto_cascade_btn, current_auto_cascade_mode == "falling", chosen_color)
 	_refresh_creator_styles()
 
 func _update_song_title_styles() -> void:
