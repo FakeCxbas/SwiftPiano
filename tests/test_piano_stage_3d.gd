@@ -97,6 +97,23 @@ func _check_hand_anatomy(stage: PianoStage3D, side: int) -> Dictionary:
 		"max_seg_err": max_seg_err
 	}
 
+func _max_assigned_x_error(stage: PianoStage3D, side: int) -> Dictionary:
+	var skel: Skeleton3D = stage._skeletons[side]
+	var chains: Array = stage.hand_controllers[side]._chains
+	var tip_names: Array[String] = ["thumb-tip", "index-finger-tip", "middle-finger-tip", "ring-finger-tip", "pinky-finger-tip"]
+	var max_err: float = 0.0
+	var count: int = 0
+	for i: int in range(chains.size()):
+		var ch: HandIKController.FingerChain = chains[i]
+		if ch.last_state != FingeringSolver.FingerState.STRIKING or ch.last_midi < 21:
+			continue
+		var tip_b: int = skel.find_bone(tip_names[i])
+		var tip_stage: Vector3 = stage.world_root.to_local(skel.to_global(skel.get_bone_pose_position(tip_b)))
+		var key_x: float = stage.key_map.get_key_rest_position(ch.last_midi).x
+		max_err = maxf(max_err, absf(tip_stage.x - key_x))
+		count += 1
+	return {"count": count, "max_err": max_err}
+
 func _run() -> void:
 	print("--- Running PianoStage3D Tests ---")
 	root.size = Vector2i(1920, 1080)
@@ -660,6 +677,53 @@ func _run() -> void:
 		var wc_anat: Dictionary = _check_hand_anatomy(stage, 1)
 		check(wc_clr >= -0.0025, "%s clears keys cleanly (clr=%.2fmm)" % [str(wc["label"]), wc_clr * 1000.0])
 		check(float(wc_anat["max_long_meta_disp"]) < 0.0005 and float(wc_anat["thumb_meta_disp"]) <= 0.025 and float(wc_anat["min_tip_gap"]) >= 0.013 and float(wc_anat["max_seg_err"]) < 0.001, "%s keeps cohesive anatomy without crossing or metacarpal dislocation (min_gap=%.1fmm, long_meta=%.2fmm, thumb_meta=%.1fmm)" % [str(wc["label"]), float(wc_anat["min_tip_gap"]) * 1000.0, float(wc_anat["max_long_meta_disp"]) * 1000.0, float(wc_anat["thumb_meta_disp"]) * 1000.0])
+
+	# Regression (Opción 1): full multi-finger key reach on octaves, 9ths, and automatic two-hand 10th split
+	var reach_cases: Array = [
+		{"label": "LH octave D2-G2-D3 [38, 43, 50]", "side": 0, "midis": [38, 43, 50], "expected_count": 3, "max_x_err": 0.006},
+		{"label": "LH octave D3-G3-D4 [50, 55, 62]", "side": 0, "midis": [50, 55, 62], "expected_count": 3, "max_x_err": 0.006},
+		{"label": "RH 4-note octave [60, 64, 67, 72]", "side": 1, "midis": [60, 64, 67, 72], "expected_count": 4, "max_x_err": 0.006}
+	]
+	for rc: Dictionary in reach_cases:
+		stage.release_all()
+		for _f in range(15):
+			stage._process(0.016)
+		var rc_side: int = int(rc["side"])
+		for m: int in rc["midis"]:
+			stage.press_key(m, Color.RED if rc_side == 1 else Color.CYAN)
+		for _f in range(25):
+			stage._process(0.016)
+		var rc_reach: Dictionary = _max_assigned_x_error(stage, rc_side)
+		var rc_anat: Dictionary = _check_hand_anatomy(stage, rc_side)
+		var rc_clr: float = _min_finger_clearance(stage, rc_side)
+		check(int(rc_reach["count"]) == int(rc["expected_count"]) and float(rc_reach["max_err"]) < float(rc["max_x_err"]), "%s reaches all keys within %.1fmm (count=%d, max_x_err=%.2fmm)" % [str(rc["label"]), float(rc["max_x_err"]) * 1000.0, int(rc_reach["count"]), float(rc_reach["max_err"]) * 1000.0])
+		check(float(rc_anat["max_long_meta_disp"]) < 0.0005 and float(rc_anat["min_tip_gap"]) >= 0.013 and float(rc_anat["max_seg_err"]) < 0.001 and rc_clr >= -0.0025, "%s keeps clean anatomy and key clearance (min_gap=%.1fmm, clr=%.2fmm)" % [str(rc["label"]), float(rc_anat["min_tip_gap"]) * 1000.0, rc_clr * 1000.0])
+
+	# Left-hand 9th [48, 55, 62] while RH is occupied on [72, 76]
+	stage.release_all()
+	for _f in range(15):
+		stage._process(0.016)
+	for m: int in [48, 55, 62, 72, 76]:
+		stage.press_key(m, Color.RED if m >= 72 else Color.CYAN)
+	for _f in range(25):
+		stage._process(0.016)
+	var ninth_l: Dictionary = _max_assigned_x_error(stage, 0)
+	var ninth_anat_l: Dictionary = _check_hand_anatomy(stage, 0)
+	var ninth_clr_l: float = _min_finger_clearance(stage, 0)
+	check(int(ninth_l["count"]) == 3 and float(ninth_l["max_err"]) < 0.012, "LH 9th [48, 55, 62] with busy RH covers all 3 notes within 12mm (count=%d, max_x_err=%.2fmm)" % [int(ninth_l["count"]), float(ninth_l["max_err"]) * 1000.0])
+	check(float(ninth_anat_l["max_long_meta_disp"]) < 0.0005 and float(ninth_anat_l["min_tip_gap"]) >= 0.013 and float(ninth_anat_l["max_seg_err"]) < 0.001 and ninth_clr_l >= -0.0025, "LH 9th preserves hand anatomy and clearance (min_gap=%.1fmm, clr=%.2fmm)" % [float(ninth_anat_l["min_tip_gap"]) * 1000.0, ninth_clr_l * 1000.0])
+
+	# Automatic two-hand handoff on a 10th [48, 55, 64] when RH is idle
+	stage.release_all()
+	for _f in range(15):
+		stage._process(0.016)
+	for m: int in [48, 55, 64]:
+		stage.press_key(m, Color.CYAN)
+	for _f in range(25):
+		stage._process(0.016)
+	var tenth_l: Dictionary = _max_assigned_x_error(stage, 0)
+	var tenth_r: Dictionary = _max_assigned_x_error(stage, 1)
+	check(int(tenth_l["count"]) >= 1 and int(tenth_r["count"]) >= 1 and int(tenth_l["count"]) + int(tenth_r["count"]) == 3 and float(tenth_l["max_err"]) < 0.006 and float(tenth_r["max_err"]) < 0.006, "10th [48, 55, 64] splits automatically across both hands within 6mm (L=%d/%.2fmm, R=%d/%.2fmm)" % [int(tenth_l["count"]), float(tenth_l["max_err"]) * 1000.0, int(tenth_r["count"]), float(tenth_r["max_err"]) * 1000.0])
 	stage.release_all()
 
 	stage.queue_free()
