@@ -47,6 +47,10 @@ func _run() -> void:
 	# Check BrandingCard defaults & positioning when zen_mode == false vs true
 	var co = app.creator_overlay
 	check(app.keyboard.anime_hands_enabled and app.menu.anime_hands_toggle.button_pressed, "Anime hands start enabled and the appearance toggle is synced")
+	check(app.menu.anime_hands_toggle.text == "Manos 3D" and not app.menu.anime_hands_toggle.text.contains("Anime"), "3D hands toggle label is renamed to 'Manos 3D'")
+	check(app.fps_hud_enabled and co.fps_hud_enabled and co.fps_card != null and co.fps_card.visible, "FPS counter HUD is enabled and visible by default")
+	check(co.fps_card.mouse_filter == Control.MOUSE_FILTER_IGNORE, "FPS counter HUD ignores mouse events")
+	check(not co.fps_card.get_rect().intersects(co.kps_card.get_rect()) and not co.fps_card.get_rect().intersects(co.hud_panel.get_rect()), "FPS counter HUD does not overlap KPS card or LiveSheetHUD")
 	check(co.branding_enabled and co.branding_card.visible, "BrandingCard enabled and visible by default")
 	check(co.badge_icon != null and (co.badge_icon.text == "♪" or co.badge_icon.text == "▶"), "BrandingCard features illuminated music/playback badge icon")
 	check(co.tag_panel != null and not co.tag_panel.visible, "Tag pill 'PIANO' is hidden per user request")
@@ -66,7 +70,7 @@ func _run() -> void:
 	send_key(app, KEY_BAR, true, false, false, 124)
 	send_key(app, KEY_BAR, false, false, false, 124)
 	check(app.zen_mode and not app.menu.visible, "Zen mode hides studio_menu")
-	check(co.visible and co.branding_card.visible and co.hud_panel.visible, "CreatorOverlay, BrandingCard and LiveSheetHUD remain visible in zen_mode")
+	check(co.visible and co.branding_card.visible and co.hud_panel.visible and co.fps_card.visible, "CreatorOverlay, BrandingCard, LiveSheetHUD and FPS HUD remain visible in zen_mode")
 	check(is_equal_approx(co.branding_target_pos.x, 28.0) and is_equal_approx(co.branding_target_pos.y, 24.0), "BrandingCard moves to Vector2(28, 24) in zen_mode")
 	check(co.zen_toast.visible and co.zen_toast.modulate.a > 0.5, "Zen mode micro-toast appears on entering zen_mode")
 	check(co.zen_toast_label.text == "Modo Grabación Activo • [|] o [Esc] para mostrar menú", "Zen toast has exact required text")
@@ -177,8 +181,17 @@ func _run() -> void:
 		send_key(app, KEY_M, true, true)
 		send_key(app, KEY_M, false, true)
 		check(co.kps_hud_enabled == m_initial, "Second Ctrl+M restores KPS & Combo HUD")
-		
-		check(app.serial == serial_before and app.audio.voices.is_empty() and app.sources.is_empty(), "Zero notes triggered in audio_engine during Ctrl+B/H/Y/K/M shortcuts (auto=%s)" % str(auto_state))
+
+		# Ctrl + F -> toggles FPS Counter HUD
+		var f_initial = co.fps_hud_enabled
+		send_key(app, KEY_F, true, true)
+		send_key(app, KEY_F, false, true)
+		check(app.fps_hud_enabled == (not f_initial) and co.fps_hud_enabled == app.fps_hud_enabled and co.fps_card.visible == co.fps_hud_enabled and app.menu.fps_hud_toggle.button_pressed == app.fps_hud_enabled and app.menu.current_fps_enabled == app.fps_hud_enabled, "Ctrl+F toggles FPS Counter HUD across overlay and menu toggles (auto=%s)" % str(auto_state))
+		send_key(app, KEY_F, true, true)
+		send_key(app, KEY_F, false, true)
+		check(app.fps_hud_enabled == f_initial and co.fps_hud_enabled == f_initial and app.menu.fps_hud_toggle.button_pressed == f_initial, "Second Ctrl+F restores FPS Counter HUD")
+
+		check(app.serial == serial_before and app.audio.voices.is_empty() and app.sources.is_empty(), "Zero notes triggered in audio_engine during Ctrl+B/H/Y/K/M/F shortcuts (auto=%s)" % str(auto_state))
 		check(app.step_index == step_before, "Step index unchanged during Ctrl shortcuts (auto=%s)" % str(auto_state))
 
 	app.auto_enabled = false
@@ -207,6 +220,7 @@ func _run() -> void:
 				check(is_equal_approx(sr.size.x, expected_w), "Shorts 9:16 width is size.y * 9/16")
 				check(co.branding_target_pos.x >= sr.position.x and co.branding_target_pos.x + co.branding_card.size.x <= sr.end.x, "BrandingCard relocated inside 9:16 shorts_rect")
 				check(co.hud_target_pos.x >= sr.position.x and co.hud_target_pos.x + co.hud_panel.size.x <= sr.end.x, "LiveSheetHUD relocated inside 9:16 shorts_rect")
+				check(co.fps_target_pos.x >= sr.position.x and co.fps_target_pos.x + co.fps_card.size.x <= sr.end.x and co.fps_target_pos.y + co.fps_card.size.y <= app.size.y * 0.8 and not Rect2(co.fps_target_pos, co.fps_card.size).intersects(Rect2(co.kps_target_pos, co.kps_card.size)), "FPS HUD stays inside 9:16 shorts_rect above piano without overlapping KPS HUD")
 			app._release_source("align-test")
 			app.visualizer.bars.clear()
 			app.visualizer.released.clear()
@@ -239,6 +253,20 @@ func _run() -> void:
 	check(co.kps_value_label.get_theme_color("font_color").is_equal_approx(co.FIRE_COLOR), "KPS > 8 switches KPS label to warm fire color")
 	co.advance_combo_idle(1.9)
 	check(co.combo_count == 0 and co.combo_value_label.text == "0x", "Combo resets to 0 after > 1.8s without notes")
+
+	# Deterministic FPS sampler checks (60 FPS healthy vs 20 FPS low alert)
+	co._fps_sample_frames = 0
+	co._fps_sample_elapsed = 0.0
+	for _i in range(16):
+		co.sample_fps(1.0 / 60.0)
+	check(co.current_fps == 60 and co.fps_value_label.text == "60" and co.fps_ms_label.text == "16.7 ms", "FPS HUD samples 60 FPS and 16.7 ms deterministically (got %d / %s)" % [co.current_fps, co.fps_ms_label.text])
+	check(co.fps_dot.color.is_equal_approx(co.FPS_GOOD_COLOR), "FPS >= 55 sets dot to healthy green")
+	co._fps_sample_frames = 0
+	co._fps_sample_elapsed = 0.0
+	for _i in range(6):
+		co.sample_fps(1.0 / 20.0)
+	check(co.current_fps == 20 and co.fps_value_label.text == "20" and co.fps_ms_label.text == "50.0 ms", "FPS HUD samples 20 FPS and 50.0 ms deterministically (got %d / %s)" % [co.current_fps, co.fps_ms_label.text])
+	check(co.fps_dot.color.is_equal_approx(co.FPS_LOW_COLOR) and co.fps_value_label.get_theme_color("font_color").is_equal_approx(co.FPS_LOW_COLOR), "FPS < 30 switches dot and value label to low FPS color")
 
 	# 7. Verify Dynamic Camera Shake (Camera2D, trauma, heavy chords & bass notes)
 	check(app.camera != null and app.camera is Camera2D and app.camera.anchor_mode == Camera2D.ANCHOR_MODE_FIXED_TOP_LEFT, "StageCamera Camera2D present with ANCHOR_MODE_FIXED_TOP_LEFT")
@@ -356,6 +384,7 @@ func _run() -> void:
 	app.set_shorts_mode(true)
 	app.set_key_range_mode("central_61")
 	app.set_kps_hud_enabled(false)
+	app.set_fps_hud_enabled(false)
 	app.set_camera_shake_enabled(true)
 	app.set_bot_bpm(155.0)
 	app.set_creator_texts("@TestCreator", "Custom Persistent Subtitle")
@@ -374,6 +403,7 @@ func _run() -> void:
 	app.set_shorts_mode(false)
 	app.set_key_range_mode("full_88")
 	app.set_kps_hud_enabled(true)
+	app.set_fps_hud_enabled(true)
 	app.set_camera_shake_enabled(false)
 	app.set_bot_bpm(120.0)
 	app.set_creator_texts("@DragonCxbas", "Virtual Piano Sheet in Description")
@@ -399,6 +429,11 @@ func _run() -> void:
 	check(app.shorts_mode == true, "Persisted shorts_mode restored")
 	check(app.key_range_mode == "central_61", "Persisted key_range_mode restored")
 	check(app.kps_hud_enabled == false and co.kps_hud_enabled == false, "Persisted kps_hud_enabled restored")
+	check(app.fps_hud_enabled == false and co.fps_hud_enabled == false and not co.fps_card.visible and not app.menu.fps_hud_toggle.button_pressed and app.menu.current_fps_enabled == false, "Persisted fps_hud_enabled restored across overlay and menu toggles")
+	app.menu.fps_toggle_btn.pressed.emit()
+	check(app.fps_hud_enabled and co.fps_hud_enabled and app.menu.fps_hud_toggle.button_pressed, "Creator drawer FPS toggle enables FPS HUD")
+	app.menu.fps_hud_toggle.button_pressed = false
+	check(not app.fps_hud_enabled and not co.fps_hud_enabled and not app.menu.current_fps_enabled, "Color drawer FPS CheckButton disables FPS HUD and syncs Creator toggle")
 	check(app.camera_shake_enabled == true, "Persisted camera_shake_enabled restored")
 	check(is_equal_approx(app.bot_bpm, 155.0), "Persisted bot_bpm restored")
 	check(co.channel_text == "@TestCreator" and app.menu.channel_field.text == "@TestCreator", "Persisted channel_text restored")

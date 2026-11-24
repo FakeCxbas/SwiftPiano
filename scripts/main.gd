@@ -50,6 +50,7 @@ var shorts_mode: bool = false
 var key_range_mode: String = "full_88"
 var auto_loop_enabled: bool = true
 var kps_hud_enabled: bool = true
+var fps_hud_enabled: bool = true
 var camera_shake_enabled: bool = false
 var trauma: float = 0.0
 var max_shake_offset: Vector2 = Vector2(14.0, 10.0)
@@ -304,6 +305,8 @@ func _build_ui() -> void:
 	menu.creator_text_changed.connect(set_creator_texts)
 	menu.song_title_edited.connect(_on_song_title_edited)
 	menu.creator_kps_toggled.connect(set_kps_hud_enabled)
+	menu.fps_hud_toggled.connect(set_fps_hud_enabled)
+	menu.set_fps_hud_enabled(fps_hud_enabled, false)
 	menu.creator_shake_toggled.connect(set_camera_shake_enabled)
 	menu.creator_rec_toggled.connect(toggle_audio_recording)
 	menu.creator_bot_toggled.connect(set_bot_enabled)
@@ -616,6 +619,19 @@ func set_kps_hud_enabled(enabled: bool) -> void:
 func toggle_kps_hud() -> void:
 	set_kps_hud_enabled(not kps_hud_enabled)
 
+func set_fps_hud_enabled(enabled: bool) -> void:
+	fps_hud_enabled = enabled
+	if creator_overlay != null:
+		creator_overlay.set_fps_hud_enabled(fps_hud_enabled)
+	if menu != null:
+		menu.set_fps_hud_enabled(fps_hud_enabled, false)
+	save_user_settings()
+
+func toggle_fps_hud() -> void:
+	set_fps_hud_enabled(not fps_hud_enabled)
+	if creator_overlay != null:
+		creator_overlay.trigger_toast("Contador de FPS: %s (Ctrl+F)" % ("Visible" if fps_hud_enabled else "Oculto"))
+
 func set_camera_shake_enabled(enabled: bool) -> void:
 	camera_shake_enabled = enabled
 	if not camera_shake_enabled:
@@ -889,6 +905,7 @@ func save_user_settings(path: String = settings_path) -> void:
 		cfg.set_value("creator", "shorts_mode", shorts_mode)
 		cfg.set_value("creator", "key_range_mode", key_range_mode)
 		cfg.set_value("creator", "kps_hud_enabled", kps_hud_enabled)
+		cfg.set_value("creator", "fps_hud_enabled", fps_hud_enabled)
 		cfg.set_value("creator", "camera_shake_enabled", camera_shake_enabled)
 		cfg.set_value("creator", "auto_loop_enabled", auto_loop_enabled)
 		cfg.set_value("creator", "bot_bpm", bot_bpm)
@@ -939,6 +956,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 		var s_mode = bool(cfg.get_value("creator", "shorts_mode", shorts_mode))
 		var k_mode = str(cfg.get_value("creator", "key_range_mode", key_range_mode))
 		var kps_en = bool(cfg.get_value("creator", "kps_hud_enabled", kps_hud_enabled))
+		var fps_en = bool(cfg.get_value("creator", "fps_hud_enabled", fps_hud_enabled))
 		var shake_en = bool(cfg.get_value("creator", "camera_shake_enabled", camera_shake_enabled))
 		var saved_bpm = float(cfg.get_value("creator", "bot_bpm", bot_bpm))
 		var ch_txt = str(cfg.get_value("creator", "channel_text", creator_overlay.channel_text))
@@ -948,6 +966,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 		set_shorts_mode(s_mode)
 		set_key_range_mode(k_mode)
 		set_kps_hud_enabled(kps_en)
+		set_fps_hud_enabled(fps_en)
 		set_camera_shake_enabled(shake_en)
 		var loop_en = bool(cfg.get_value("creator", "auto_loop_enabled", true))
 		set_auto_loop_enabled(loop_en)
@@ -1345,6 +1364,10 @@ func _input(event: InputEvent) -> void:
 				return
 			KEY_M:
 				toggle_kps_hud()
+				get_viewport().set_input_as_handled()
+				return
+			KEY_F:
+				toggle_fps_hud()
 				get_viewport().set_input_as_handled()
 				return
 			KEY_R:

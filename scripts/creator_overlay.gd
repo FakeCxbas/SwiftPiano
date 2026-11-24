@@ -55,6 +55,15 @@ class LiveWaveBadge extends Control:
 			var by = (h - bh) * 0.5
 			draw_rect(Rect2(bx, by, bar_w, bh), c, true)
 
+class FpsStatusDot extends Control:
+	var color: Color = Color("#4EE6A8")
+	func _init() -> void:
+		custom_minimum_size = Vector2(8, 8)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		draw_circle(Vector2(4, 4), 4.0, Color(color.r, color.g, color.b, 0.28))
+		draw_circle(Vector2(4, 4), 2.4, color)
+
 class NeonTopBeam extends Control:
 	var active_color: Color = Color("#64e8d0")
 	
@@ -161,6 +170,25 @@ var rec_badge: PanelContainer
 var rec_style: StyleBoxFlat
 var rec_label: Label
 
+# Component F: Real-time FPS & Frame Time HUD
+const FPS_SAMPLE_WINDOW: float = 0.25
+const FPS_GOOD_COLOR: Color = Color("#4EE6A8")
+const FPS_WARN_COLOR: Color = Color("#FFCA58")
+const FPS_LOW_COLOR: Color = Color("#FF5964")
+var fps_hud_enabled: bool = true
+var current_fps: int = 0
+var current_frame_ms: float = 0.0
+var _fps_sample_frames: int = 0
+var _fps_sample_elapsed: float = 0.0
+var fps_card: PanelContainer
+var fps_style: StyleBoxFlat
+var fps_dot: FpsStatusDot
+var fps_value_label: Label
+var fps_unit_label: Label
+var fps_ms_label: Label
+var fps_target_pos: Vector2 = Vector2.ZERO
+var _fps_pos_tween: Tween
+
 # Zen Mode Micro-Toast
 var zen_toast: PanelContainer
 var zen_toast_style: StyleBoxFlat
@@ -188,11 +216,17 @@ func _ready() -> void:
 	_build_branding_card()
 	_build_live_sheet_hud()
 	_build_kps_combo_hud()
+	_build_fps_hud()
 	_build_rec_indicator()
 	_build_zen_toast()
+	var eng_fps: float = Engine.get_frames_per_second()
+	if eng_fps > 0.0:
+		current_fps = int(round(eng_fps))
+		current_frame_ms = 1000.0 / eng_fps
 	_apply_accent_colors()
 	_refresh_hud_tokens(false)
 	_refresh_kps_combo_labels()
+	_refresh_fps_display()
 	resized.connect(func(): arrange(size, menu_height, false))
 	arrange(size, menu_height, false)
 
@@ -203,7 +237,7 @@ func _effective_size() -> Vector2:
 
 func _exit_tree() -> void:
 	main_ref = null
-	for tw in [_branding_tween, _pill_tween, _hud_pos_tween, _step_pulse_tween, _toast_tween, _kps_pos_tween, _combo_pulse_tween]:
+	for tw in [_branding_tween, _pill_tween, _hud_pos_tween, _step_pulse_tween, _toast_tween, _kps_pos_tween, _combo_pulse_tween, _fps_pos_tween]:
 		if tw != null and tw.is_valid():
 			tw.kill()
 	_branding_tween = null
@@ -213,6 +247,7 @@ func _exit_tree() -> void:
 	_toast_tween = null
 	_kps_pos_tween = null
 	_combo_pulse_tween = null
+	_fps_pos_tween = null
 	bold_font = null
 
 func _process(delta: float) -> void:
@@ -222,6 +257,7 @@ func _process(delta: float) -> void:
 			var step_changed = (main_ref.step_index != _synced_step_index and main_ref.steps.size() == _synced_steps_count)
 			update_steps(main_ref.steps, main_ref.step_index, step_changed)
 	_update_kps_and_combo(delta)
+	_update_fps_counter(delta)
 	if is_recording and rec_badge != null:
 		rec_elapsed_sec += delta
 		var pulse = 0.45 + 0.55 * (0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.01))
@@ -649,6 +685,64 @@ func _build_kps_combo_hud() -> void:
 	combo_unit_label.add_theme_color_override("font_color", Color("#9CB6C7"))
 	combo_vbox.add_child(combo_unit_label)
 
+func _build_fps_hud() -> void:
+	fps_card = PanelContainer.new()
+	fps_card.name = "FpsCounterHUD"
+	fps_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	fps_style = StyleBoxFlat.new()
+	fps_style.bg_color = Color(0.05, 0.06, 0.09, 0.74)
+	fps_style.set_corner_radius_all(10)
+	fps_style.set_border_width_all(1)
+	fps_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
+	fps_style.shadow_size = 8
+	fps_style.shadow_color = Color(0.0, 0.0, 0.0, 0.45)
+	fps_style.shadow_offset = Vector2(0, 3)
+	fps_style.content_margin_left = 10
+	fps_style.content_margin_right = 10
+	fps_style.content_margin_top = 4
+	fps_style.content_margin_bottom = 4
+	fps_card.add_theme_stylebox_override("panel", fps_style)
+	add_child(fps_card)
+	
+	var hbox = HBoxContainer.new()
+	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 6)
+	fps_card.add_child(hbox)
+	
+	fps_dot = FpsStatusDot.new()
+	hbox.add_child(fps_dot)
+	
+	fps_value_label = Label.new()
+	fps_value_label.name = "FpsValueLabel"
+	fps_value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_value_label.custom_minimum_size = Vector2(28, 0)
+	fps_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fps_value_label.text = "--"
+	fps_value_label.add_theme_font_override("font", bold_font)
+	fps_value_label.add_theme_font_size_override("font_size", 14)
+	fps_value_label.add_theme_color_override("font_color", Color("#F4F6FF"))
+	hbox.add_child(fps_value_label)
+	
+	fps_unit_label = Label.new()
+	fps_unit_label.name = "FpsUnitLabel"
+	fps_unit_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_unit_label.text = "FPS"
+	fps_unit_label.add_theme_font_size_override("font_size", 10)
+	fps_unit_label.add_theme_color_override("font_color", Color("#9CB6C7"))
+	hbox.add_child(fps_unit_label)
+	
+	fps_ms_label = Label.new()
+	fps_ms_label.name = "FpsMsLabel"
+	fps_ms_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_ms_label.custom_minimum_size = Vector2(44, 0)
+	fps_ms_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fps_ms_label.text = "-- ms"
+	fps_ms_label.add_theme_font_size_override("font_size", 10)
+	fps_ms_label.add_theme_color_override("font_color", Color("#7C95A6"))
+	hbox.add_child(fps_ms_label)
+
 func _build_rec_indicator() -> void:
 	rec_badge = PanelContainer.new()
 	rec_badge.name = "RecIndicator"
@@ -774,12 +868,66 @@ func _apply_accent_colors() -> void:
 	if zen_toast_style != null:
 		zen_toast_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.55)
 	_refresh_kps_combo_labels()
+	_refresh_fps_display()
 
 func set_kps_hud_enabled(enabled: bool) -> void:
 	kps_hud_enabled = enabled
 	if kps_card != null:
 		kps_card.visible = kps_hud_enabled
 	arrange(_effective_size(), menu_height, true)
+
+func set_fps_hud_enabled(enabled: bool) -> void:
+	fps_hud_enabled = enabled
+	if fps_card != null:
+		fps_card.visible = fps_hud_enabled
+	arrange(_effective_size(), menu_height, true)
+
+func sample_fps(delta: float) -> void:
+	_update_fps_counter(delta)
+
+func _update_fps_counter(delta: float) -> void:
+	if not fps_hud_enabled or delta <= 0.0:
+		return
+	_fps_sample_frames += 1
+	_fps_sample_elapsed += delta
+	if _fps_sample_elapsed >= FPS_SAMPLE_WINDOW:
+		var avg_dt: float = _fps_sample_elapsed / float(maxi(1, _fps_sample_frames))
+		current_fps = int(round(1.0 / maxf(avg_dt, 0.0001)))
+		current_frame_ms = avg_dt * 1000.0
+		_fps_sample_frames = 0
+		_fps_sample_elapsed = 0.0
+		_refresh_fps_display()
+	elif current_fps == 0:
+		var eng_fps: float = Engine.get_frames_per_second()
+		if eng_fps > 0.0:
+			current_fps = int(round(eng_fps))
+			current_frame_ms = 1000.0 / eng_fps
+			_refresh_fps_display()
+
+func _refresh_fps_display() -> void:
+	var state_color: Color = Color("#7C95A6")
+	if current_fps >= 55:
+		state_color = FPS_GOOD_COLOR
+	elif current_fps >= 30:
+		state_color = FPS_WARN_COLOR
+	elif current_fps > 0:
+		state_color = FPS_LOW_COLOR
+	if fps_dot != null:
+		fps_dot.color = state_color
+		fps_dot.queue_redraw()
+	if fps_value_label != null:
+		fps_value_label.text = str(current_fps) if current_fps > 0 else "--"
+		var val_col: Color = Color("#F4F6FF") if (current_fps >= 55 or current_fps == 0) else state_color
+		fps_value_label.add_theme_color_override("font_color", val_col)
+	if fps_ms_label != null:
+		fps_ms_label.text = ("%.1f ms" % current_frame_ms) if current_fps > 0 else "-- ms"
+	if fps_style != null:
+		if current_fps > 0 and current_fps < 30:
+			fps_style.border_color = Color(FPS_LOW_COLOR.r, FPS_LOW_COLOR.g, FPS_LOW_COLOR.b, 0.72)
+		elif current_fps > 0 and current_fps < 55:
+			fps_style.border_color = Color(FPS_WARN_COLOR.r, FPS_WARN_COLOR.g, FPS_WARN_COLOR.b, 0.60)
+		else:
+			fps_style.border_color = Color(active_color.r, active_color.g, active_color.b, 0.40)
 
 func set_recording_state(active: bool) -> void:
 	is_recording = active
@@ -1055,6 +1203,7 @@ func arrange(view_size: Vector2, current_menu_height: float = 112.0, animate: bo
 	_layout_branding(animate)
 	_layout_hud(animate)
 	_layout_kps_hud(animate)
+	_layout_fps_hud(animate)
 	_layout_rec_badge()
 	_position_zen_toast()
 	queue_redraw()
@@ -1123,7 +1272,7 @@ func _layout_hud(animate: bool = false) -> void:
 	elif not is_shorts_active and hud_position != "above_piano":
 		if branding_enabled and branding_position == "top_left":
 			var min_hud_x = branding_target_pos.x + branding_card.size.x + 18.0
-			var max_hud_x = frame.end.x - (160.0 if kps_hud_enabled else 28.0)
+			var max_hud_x = frame.end.x - (160.0 if (kps_hud_enabled or fps_hud_enabled) else 28.0)
 			if center_x < min_hud_x:
 				var max_symmetric_w = (frame.size.x * 0.5 - (min_hud_x - frame.position.x)) * 2.0
 				if max_symmetric_w >= 400.0:
@@ -1187,6 +1336,45 @@ func _layout_kps_hud(animate: bool = false) -> void:
 	else:
 		kps_card.position = target
 
+func _layout_fps_hud(animate: bool = false) -> void:
+	if fps_card == null:
+		return
+	var vs = _effective_size()
+	fps_card.visible = fps_hud_enabled
+	fps_card.reset_size()
+	var f_size = fps_card.get_combined_minimum_size()
+	fps_card.size = f_size
+	var frame = get_shorts_rect(vs)
+	var is_shorts_active = shorts_mode and vs.x > vs.y
+	var margin_x = 14.0 if is_shorts_active else 28.0
+	var top_y = 24.0 if zen_mode else (menu_height + 16.0)
+	var target: Vector2
+	if is_shorts_active and branding_enabled:
+		if kps_hud_enabled and kps_card != null:
+			target = Vector2(frame.end.x - f_size.x - margin_x, kps_target_pos.y - f_size.y - 8.0)
+		else:
+			target = Vector2(frame.end.x - f_size.x - margin_x, vs.y * 0.8 - f_size.y - 16.0)
+	elif branding_enabled and branding_position == "top_right":
+		if kps_hud_enabled and kps_card != null:
+			target = Vector2(frame.position.x + margin_x, kps_target_pos.y + kps_card.size.y + 8.0)
+		else:
+			target = Vector2(frame.position.x + margin_x, top_y)
+	else:
+		if kps_hud_enabled and kps_card != null:
+			target = Vector2(frame.end.x - f_size.x - margin_x, kps_target_pos.y + kps_card.size.y + 8.0)
+		else:
+			target = Vector2(frame.end.x - f_size.x - margin_x, top_y)
+	target.x = clampf(target.x, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - f_size.x - 8.0))
+	target.y = maxf(8.0, target.y)
+	fps_target_pos = target
+	if animate and is_inside_tree():
+		if _fps_pos_tween != null and _fps_pos_tween.is_valid():
+			_fps_pos_tween.kill()
+		_fps_pos_tween = create_tween()
+		_fps_pos_tween.tween_property(fps_card, "position", target, 0.20).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	else:
+		fps_card.position = target
+
 func _layout_rec_badge() -> void:
 	if rec_badge == null:
 		return
@@ -1201,9 +1389,21 @@ func _layout_rec_badge() -> void:
 	var top_y = 24.0 if zen_mode else (menu_height + 16.0)
 	var rx = frame.end.x - r_size.x - margin_x
 	var ry = top_y
-	if kps_hud_enabled and kps_card != null:
-		ry = kps_target_pos.y + kps_card.size.y + 8.0
-		rx = kps_target_pos.x + (kps_card.size.x - r_size.x)
+	if is_shorts_active and branding_enabled:
+		if fps_hud_enabled and fps_card != null:
+			ry = fps_target_pos.y - r_size.y - 8.0
+			rx = fps_target_pos.x + (fps_card.size.x - r_size.x)
+		elif kps_hud_enabled and kps_card != null:
+			ry = kps_target_pos.y - r_size.y - 8.0
+			rx = kps_target_pos.x + (kps_card.size.x - r_size.x)
+	else:
+		var left_aligned: bool = branding_enabled and branding_position == "top_right"
+		if fps_hud_enabled and fps_card != null:
+			ry = fps_target_pos.y + fps_card.size.y + 8.0
+			rx = fps_target_pos.x if left_aligned else (fps_target_pos.x + (fps_card.size.x - r_size.x))
+		elif kps_hud_enabled and kps_card != null:
+			ry = kps_target_pos.y + kps_card.size.y + 8.0
+			rx = kps_target_pos.x if left_aligned else (kps_target_pos.x + (kps_card.size.x - r_size.x))
 	rec_badge.position = Vector2(clampf(rx, frame.position.x + 8.0, maxf(frame.position.x + 8.0, frame.end.x - r_size.x - 8.0)), ry)
 
 func _position_zen_toast() -> void:
