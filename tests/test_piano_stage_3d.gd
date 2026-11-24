@@ -868,6 +868,98 @@ func _run() -> void:
 	app.set_bot_enabled(false)
 	check(app.stage_3d._live_cascade_enabled and app.stage_3d._live_notes.is_empty(), "Disabling Bot restores live cascade mode with cleared live pills")
 
+	# Regression: full-key occlusion shade overlay, stronger physical depression, and zero key neon emission
+	stage.release_all()
+	for _f in range(70):
+		stage._process(0.016)
+	check(stage._key_shades.size() == 88 and stage._key_shade_materials.size() == 88, "Builds 88 KeyShade overlays matched 1:1 with 3D keys")
+	var shade_w_idx: int = 60 - 21
+	var shade_b_idx: int = 61 - 21
+	check(stage._key_shades[shade_w_idx].get_parent() == stage._keys[shade_w_idx] and not stage._key_shades[shade_w_idx].visible and not stage._key_shades[shade_b_idx].visible, "KeyShade overlays parent to each key and stay hidden at rest")
+	var w_rest_front_2: float = (stage._keys[shade_w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var b_rest_front_2: float = (stage._keys[shade_b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, KeyMap3D.BLACK_LENGTH * 0.5)).y
+	var w_rest_alb_2: Color = stage._key_materials[shade_w_idx].albedo_color
+	stage.press_key(60, Color.RED)
+	stage.press_key(61, Color.CYAN)
+	for _f in range(15):
+		stage._process(0.016)
+	var w_press_shader: float = float(stage._key_shade_materials[shade_w_idx].get_shader_parameter("press"))
+	var b_press_shader: float = float(stage._key_shade_materials[shade_b_idx].get_shader_parameter("press"))
+	var w_down_front_2: float = (stage._keys[shade_w_idx].transform * Vector3(0.0, KeyMap3D.WHITE_HEIGHT * 0.5, KeyMap3D.WHITE_LENGTH * 0.5)).y
+	var b_down_front_2: float = (stage._keys[shade_b_idx].transform * Vector3(0.0, KeyMap3D.BLACK_HEIGHT * 0.5, KeyMap3D.BLACK_LENGTH * 0.5)).y
+	check(stage._key_shades[shade_w_idx].visible and stage._key_shades[shade_b_idx].visible and w_press_shader > 0.5 and b_press_shader > 0.5, "Pressed white and black keys activate full-key KeyShade overlays (press=%.2f/%.2f)" % [w_press_shader, b_press_shader])
+	check(stage._key_materials[shade_w_idx].albedo_color.v < w_rest_alb_2.v - 0.15 and is_zero_approx(stage._key_materials[shade_w_idx].emission_energy_multiplier) and is_zero_approx(stage._key_materials[shade_b_idx].emission_energy_multiplier), "Pressed white key darkens strongly with zero neon body emission")
+	check(w_rest_front_2 - w_down_front_2 > 0.014 and b_rest_front_2 - b_down_front_2 > 0.012, "Deepened physical depression drops key front cleanly (W=%.1fmm, B=%.1fmm)" % [(w_rest_front_2 - w_down_front_2) * 1000.0, (b_rest_front_2 - b_down_front_2) * 1000.0])
+	stage.release_all()
+	for _f in range(70):
+		stage._process(0.016)
+	check(not stage._key_shades[shade_w_idx].visible and not stage._key_shades[shade_b_idx].visible, "KeyShade overlays hide cleanly after full key release")
+
+	# Regression: Auto cascade toggle between 'Desde abajo' ('rising') and 'En cascada' ('falling')
+	app.set_bot_enabled(false)
+	app.auto_enabled = false
+	app.set_auto_cascade_mode("rising")
+	app.set_stage_mode("3d")
+	app.steps.clear()
+	app.steps.append({"notes": [71, 74], "transposition": 0})
+	app.steps.append({"notes": [72, 76], "transposition": 0})
+	app.steps.append({"notes": [74, 79], "transposition": 0})
+	app.step_delays.clear()
+	app.step_delays.append(0.35)
+	app.step_delays.append(0.35)
+	app.step_delays.append(0.35)
+	app.step_index = 0
+	app._sync_stage_3d_notes()
+	check(app.auto_cascade_mode == "rising" and app.menu.current_auto_cascade_mode == "rising", "Default Auto cascade mode starts in 'rising' (Desde abajo)")
+	check(app.menu.sheet_auto_cascade_btn != null and "Desde abajo" in app.menu.sheet_auto_cascade_btn.text, "Sheet toolbar toggle reflects 'Desde abajo'")
+
+	app._popup_action("Auto")
+	app._process(0.016)
+	check(app.auto_enabled and app.stage_3d._live_cascade_enabled and not app.stage_3d._smooth_cascade_clock, "Auto in 'rising' keeps live rising cascade enabled")
+
+	var ctrl_n_ev: InputEventKey = InputEventKey.new()
+	ctrl_n_ev.keycode = KEY_N
+	ctrl_n_ev.physical_keycode = KEY_N
+	ctrl_n_ev.ctrl_pressed = true
+	ctrl_n_ev.pressed = true
+	app._input(ctrl_n_ev)
+	check(app.auto_cascade_mode == "falling" and app.menu.current_auto_cascade_mode == "falling", "Ctrl+N toggles Auto cascade mode to 'falling' (En cascada)")
+	check(app.menu.sheet_auto_cascade_btn != null and "En cascada" in app.menu.sheet_auto_cascade_btn.text, "Sheet toolbar toggle updates text to 'En cascada'")
+	check(not app.stage_3d._live_cascade_enabled and app.stage_3d._smooth_cascade_clock and not app.stage_3d._anticipation_enabled, "Auto in 'falling' enables smooth falling cascade without Bot anticipation")
+	var auto_falling_pills: Array[Dictionary] = app.stage_3d.get_visible_pills()
+	check(not auto_falling_pills.is_empty() and str(auto_falling_pills[0]["label"]) in ["B", "D"], "Auto in 'falling' renders waiting sheet pills from top cascade")
+
+	var vis_t0: float = app.stage_3d._visual_playback_time
+	var step_ev_down: InputEventKey = InputEventKey.new()
+	step_ev_down.keycode = KEY_F
+	step_ev_down.physical_keycode = KEY_F
+	step_ev_down.pressed = true
+	app._input(step_ev_down)
+	check(app.step_index == 1 and app.stage_3d._playback_time > vis_t0 + 0.25, "Stepping in Auto updates target cascade clock immediately")
+	app.stage_3d._process(0.016)
+	var vis_t1: float = app.stage_3d._visual_playback_time
+	check(vis_t1 > vis_t0 and vis_t1 < app.stage_3d._playback_time, "Smooth cascade clock glides visual time progressively between Auto taps (%.4f -> %.4f -> %.4f)" % [vis_t0, vis_t1, app.stage_3d._playback_time])
+	var step_ev_up: InputEventKey = InputEventKey.new()
+	step_ev_up.keycode = KEY_F
+	step_ev_up.physical_keycode = KEY_F
+	step_ev_up.pressed = false
+	app._input(step_ev_up)
+
+	# Leaving Auto while in 'falling' still renders Normal mode from bottom without frozen sheet bars
+	app._popup_action("Auto")
+	app._process(0.016)
+	check(not app.auto_enabled and app.stage_3d._live_cascade_enabled and not app.stage_3d._smooth_cascade_clock, "Normal mode stays on rising live cascade even when Auto preference is 'falling'")
+
+	# Persistence roundtrip for auto_cascade_mode
+	var tmp_cfg: String = "user://test_auto_cascade_settings.cfg"
+	app._loading_settings = false
+	app.set_auto_cascade_mode("falling")
+	app.save_user_settings(tmp_cfg)
+	app.set_auto_cascade_mode("rising")
+	var loaded_ok: bool = app.load_user_settings(tmp_cfg)
+	check(loaded_ok and app.auto_cascade_mode == "falling" and app.menu.current_auto_cascade_mode == "falling", "User settings persist and restore auto_cascade_mode across sessions")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_cfg))
+
 	stage.queue_free()
 	app.queue_free()
 	await process_frame

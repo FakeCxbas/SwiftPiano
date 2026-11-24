@@ -60,6 +60,9 @@ var _energy: PackedFloat32Array = PackedFloat32Array()
 var _rail_pulse: PackedFloat32Array = PackedFloat32Array()
 var _strike_serial: PackedInt32Array = PackedInt32Array()
 var _key_colors: Array[Color] = []
+var _key_shades: Array[MeshInstance3D] = []
+var _key_shade_materials: Array[ShaderMaterial] = []
+var _key_shade_shader: Shader
 var _rail_segments: Array[MeshInstance3D] = []
 var _rail_segment_materials: Array[StandardMaterial3D] = []
 var _rail_halos: Array[MeshInstance3D] = []
@@ -85,6 +88,9 @@ var _strike_rail_y: float = 0.0
 var _overlay_had_content: bool = false
 var _playback_time: float = 0.0
 var _note_cursor: int = 0
+var _visual_playback_time: float = 0.0
+var _visual_note_cursor: int = 0
+var _smooth_cascade_clock: bool = false
 var _hands_enabled: bool = true
 var _anticipation_enabled: bool = true
 
@@ -119,13 +125,13 @@ func _ready() -> void:
 	environment_node.environment = environment
 	world_root.add_child(environment_node)
 	var light: DirectionalLight3D = DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-58.0, -22.0, 0.0)
+	light.rotation_degrees = Vector3(-52.0, -28.0, 0.0)
 	light.light_energy = 0.72
 	light.shadow_enabled = true
-	light.shadow_opacity = 0.55
-	light.shadow_bias = 0.0006
-	light.shadow_normal_bias = 1.0
-	light.directional_shadow_max_distance = 3.0
+	light.shadow_opacity = 0.70
+	light.shadow_bias = 0.0004
+	light.shadow_normal_bias = 0.25
+	light.directional_shadow_max_distance = 2.4
 	world_root.add_child(light)
 	var rim: DirectionalLight3D = DirectionalLight3D.new()
 	rim.name = "HandRimLight"
@@ -224,6 +230,31 @@ func _build_keyboard() -> void:
 	_rail_pulse.resize(88)
 	_strike_serial.resize(88)
 	_key_colors.clear()
+	_key_shades.clear()
+	_key_shade_materials.clear()
+	_key_shade_shader = Shader.new()
+	_key_shade_shader.code = """shader_type spatial;
+render_mode unshaded, depth_draw_never, cull_back;
+uniform float press = 0.0;
+uniform float is_black = 0.0;
+void fragment() {
+	float edge_x = min(UV.x, 1.0 - UV.x);
+	float edge_y = min(UV.y, 1.0 - UV.y);
+	if (is_black < 0.5) {
+		float side_ao = pow(1.0 - smoothstep(0.0, 0.30, edge_x), 1.55);
+		float back_ao = 1.0 - smoothstep(0.0, 0.55, UV.y);
+		float front_lip = smoothstep(0.88, 1.0, UV.y);
+		float a = clamp((0.20 + 0.44 * side_ao + 0.24 * back_ao + 0.28 * front_lip) * press, 0.0, 0.70);
+		ALBEDO = vec3(0.05, 0.07, 0.13);
+		ALPHA = a;
+	} else {
+		float perimeter = max(1.0 - smoothstep(0.0, 0.22, edge_x), 1.0 - smoothstep(0.0, 0.16, edge_y));
+		float inner_sheen = smoothstep(0.16, 0.44, edge_x) * smoothstep(0.08, 0.72, UV.y) * (1.0 - smoothstep(0.86, 1.0, UV.y));
+		ALBEDO = mix(vec3(0.02, 0.03, 0.06), vec3(0.56, 0.63, 0.78), inner_sheen);
+		ALPHA = clamp((0.36 * perimeter + 0.42 * inner_sheen) * press, 0.0, 0.58);
+	}
+}
+"""
 	_rail_halo_shader = Shader.new()
 	_rail_halo_shader.code = """shader_type spatial;
 render_mode unshaded, blend_add, depth_draw_never, cull_disabled;
@@ -251,6 +282,22 @@ void fragment() {
 		_key_materials.append(material)
 		_rest.append(location)
 		_key_colors.append(Color.CYAN)
+		var shade_mat: ShaderMaterial = ShaderMaterial.new()
+		shade_mat.shader = _key_shade_shader
+		shade_mat.set_shader_parameter("press", 0.0)
+		shade_mat.set_shader_parameter("is_black", 1.0 if black else 0.0)
+		var shade_mesh: PlaneMesh = PlaneMesh.new()
+		shade_mesh.size = Vector2(dimensions.x * 0.995, dimensions.z * 0.995)
+		var shade: MeshInstance3D = MeshInstance3D.new()
+		shade.name = "KeyShade%d" % midi
+		shade.mesh = shade_mesh
+		shade.material_override = shade_mat
+		shade.position = Vector3(0.0, dimensions.y * 0.5 + 0.00025, 0.0)
+		shade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		shade.visible = false
+		key.add_child(shade)
+		_key_shades.append(shade)
+		_key_shade_materials.append(shade_mat)
 		var seg_w: float = KeyMap3D.BLACK_WIDTH * 1.15 if black else KeyMap3D.WHITE_WIDTH * 1.04
 		var seg_mat: StandardMaterial3D = StandardMaterial3D.new()
 		seg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -414,13 +461,34 @@ func set_notes(notes: Array[StageNote]) -> void:
 	_note_cursor = 0
 	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
 		_note_cursor += 1
+	_visual_note_cursor = 0
+	while _visual_note_cursor < _notes.size() and _notes[_visual_note_cursor].start + _notes[_visual_note_cursor].duration < _visual_playback_time:
+		_visual_note_cursor += 1
 	if not _live_cascade_enabled:
 		_request_cascade_redraw()
 
 func set_playback_time(seconds: float) -> void:
-	if seconds < _playback_time:
+	var next_t: float = maxf(seconds, 0.0)
+	if next_t < _playback_time:
 		_note_cursor = 0
-	_playback_time = maxf(seconds, 0.0)
+		_visual_note_cursor = 0
+		_visual_playback_time = next_t
+	_playback_time = next_t
+	if not _smooth_cascade_clock:
+		_visual_playback_time = _playback_time
+
+func set_smooth_cascade_clock(enabled: bool) -> void:
+	if _smooth_cascade_clock == enabled:
+		return
+	_smooth_cascade_clock = enabled
+	snap_cascade_clock()
+
+func snap_cascade_clock() -> void:
+	_visual_playback_time = _playback_time
+	_visual_note_cursor = 0
+	while _visual_note_cursor < _notes.size() and _notes[_visual_note_cursor].start + _notes[_visual_note_cursor].duration < _visual_playback_time:
+		_visual_note_cursor += 1
+	_request_cascade_redraw()
 
 func set_anticipation_enabled(enabled: bool) -> void:
 	_anticipation_enabled = enabled
@@ -499,12 +567,18 @@ func _process(delta: float) -> void:
 		var press_vis: float = clampf(_depth[index], 0.0, 1.0)
 		var mat: StandardMaterial3D = _key_materials[index]
 		if _is_black(index + 21):
-			mat.albedo_color = Color("171822").lerp(Color("2c3244"), press_vis * 0.70)
-			mat.roughness = lerpf(0.25, 0.16, press_vis)
+			mat.albedo_color = Color("171822").lerp(Color("4a546e"), press_vis * 0.92)
+			mat.roughness = lerpf(0.25, 0.12, press_vis)
+			mat.metallic_specular = lerpf(0.68, 0.96, press_vis)
 		else:
-			mat.albedo_color = Color("f4f1ea").lerp(Color("c9cfd9"), press_vis * 0.85)
-			mat.roughness = lerpf(0.24, 0.36, press_vis)
+			mat.albedo_color = Color("f4f1ea").lerp(Color("9ea8bc"), press_vis * 0.92)
+			mat.roughness = lerpf(0.24, 0.56, press_vis)
+			mat.metallic_specular = lerpf(0.55, 0.16, press_vis)
 		mat.emission_energy_multiplier = 0.0
+		var shade: MeshInstance3D = _key_shades[index]
+		shade.visible = press_vis > 0.005
+		if shade.visible:
+			_key_shade_materials[index].set_shader_parameter("press", press_vis)
 		_energy[index] = 2.0 if _pressed[index] != 0 else _energy[index] * exp(-5.0 * dt)
 		_rail_pulse[index] *= exp(-14.0 * dt)
 		var active_glow: bool = _energy[index] > 0.01
@@ -526,7 +600,7 @@ func _process(delta: float) -> void:
 	_elapsed_time += delta
 	_update_hands(delta)
 	_update_hand_lights(damping)
-	_update_cascade()
+	_update_cascade(delta)
 
 func _update_hands(delta: float) -> void:
 	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
@@ -560,19 +634,25 @@ func get_visible_pills() -> Array[Dictionary]:
 				"held": live_note.released < 0.0
 			})
 		return result
-	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
-		_note_cursor += 1
+	var display_t: float = _visual_playback_time if _smooth_cascade_clock else _playback_time
+	if _smooth_cascade_clock:
+		while _visual_note_cursor < _notes.size() and _notes[_visual_note_cursor].start + _notes[_visual_note_cursor].duration < display_t:
+			_visual_note_cursor += 1
+	else:
+		while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < display_t:
+			_note_cursor += 1
+	var cursor: int = _visual_note_cursor if _smooth_cascade_clock else _note_cursor
 	var used: int = 0
-	for index: int in range(_note_cursor, _notes.size()):
+	for index: int in range(cursor, _notes.size()):
 		var note: StageNote = _notes[index]
-		if note.start > _playback_time + LOOKAHEAD or used >= MAX_BARS:
+		if note.start > display_t + LOOKAHEAD or used >= MAX_BARS:
 			break
-		if note.start + note.duration < _playback_time:
+		if note.start + note.duration < display_t:
 			continue
 		var is_black: bool = _is_black(note.midi)
 		var min_len: float = PILL_MIN_LEN_BLACK if is_black else PILL_MIN_LEN_WHITE
-		var raw_near: float = (note.start - _playback_time) / LOOKAHEAD * CASCADE_SPAN
-		var raw_far: float = maxf((note.start + note.duration - _playback_time) / LOOKAHEAD * CASCADE_SPAN, raw_near + min_len)
+		var raw_near: float = (note.start - display_t) / LOOKAHEAD * CASCADE_SPAN
+		var raw_far: float = maxf((note.start + note.duration - display_t) / LOOKAHEAD * CASCADE_SPAN, raw_near + min_len)
 		var dist_near: float = maxf(raw_near, 0.0)
 		var dist_far: float = minf(raw_far, CASCADE_SPAN)
 		if dist_far <= dist_near + 0.002:
@@ -589,21 +669,36 @@ func get_visible_pills() -> Array[Dictionary]:
 		used += 1
 	return result
 
-func _update_cascade() -> void:
+func _update_cascade(delta: float = 0.0) -> void:
+	var dt: float = clampf(delta, 0.0, 0.05)
+	if _smooth_cascade_clock:
+		if _visual_playback_time > _playback_time:
+			_visual_playback_time = _playback_time
+			_visual_note_cursor = 0
+		else:
+			_visual_playback_time = lerpf(_visual_playback_time, _playback_time, 1.0 - exp(-18.0 * dt))
+			if absf(_playback_time - _visual_playback_time) < 0.0008:
+				_visual_playback_time = _playback_time
+	else:
+		_visual_playback_time = _playback_time
 	while _note_cursor < _notes.size() and _notes[_note_cursor].start + _notes[_note_cursor].duration < _playback_time:
 		_note_cursor += 1
+	while _visual_note_cursor < _notes.size() and _notes[_visual_note_cursor].start + _notes[_visual_note_cursor].duration < _visual_playback_time:
+		_visual_note_cursor += 1
 	for index: int in range(_live_notes.size() - 1, -1, -1):
 		var live_note: LiveNote = _live_notes[index]
 		if live_note.released >= 0.0 and LIVE_RISE_SPEED * maxf(0.0, _elapsed_time - live_note.released) > CASCADE_SPAN + 0.15:
 			_live_notes.remove_at(index)
 	_update_overlay_bounds()
+	var display_t: float = _visual_playback_time if _smooth_cascade_clock else _playback_time
+	var cursor: int = _visual_note_cursor if _smooth_cascade_clock else _note_cursor
 	var has_pills: bool = not _live_notes.is_empty() if _live_cascade_enabled else false
 	if not _live_cascade_enabled:
-		for index: int in range(_note_cursor, _notes.size()):
+		for index: int in range(cursor, _notes.size()):
 			var note: StageNote = _notes[index]
-			if note.start > _playback_time + LOOKAHEAD:
+			if note.start > display_t + LOOKAHEAD:
 				break
-			if note.start + note.duration >= _playback_time:
+			if note.start + note.duration >= display_t:
 				has_pills = true
 				break
 	var has_glow: bool = false
@@ -611,7 +706,8 @@ func _update_cascade() -> void:
 		if _energy[index] > 0.01:
 			has_glow = true
 			break
-	var has_content: bool = has_pills or has_glow
+	var gliding: bool = _smooth_cascade_clock and absf(_playback_time - _visual_playback_time) > 0.0005
+	var has_content: bool = has_pills or has_glow or gliding
 	if visible and (has_content or _overlay_had_content):
 		_request_cascade_redraw()
 	_overlay_had_content = has_content
