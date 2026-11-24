@@ -320,7 +320,7 @@ func _run() -> void:
 	app._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	app.audio.stop_all()
 	check(app.sources.is_empty(), "Source cleanup")
-	check(app.library.songs.size() == 104, "92 PDF entries and twelve shared songs")
+	check(app.library.songs.size() == 105, "92 PDF entries and thirteen shared songs")
 	var playable = 0
 	for song in app.library.songs:
 		var parsed = Parser.parse(song.sheet, true)
@@ -329,7 +329,7 @@ func _run() -> void:
 			check(not parsed.is_empty(), "Library sheet parses: " + song.title)
 		else:
 			check(song.title == "Love Story" and parsed.is_empty(), "Title-only entry is not invented")
-	check(playable == 103, "103 playable entries and one title-only entry")
+	check(playable == 104, "104 playable entries and one title-only entry")
 	check(Parser.parse("[(w]", true)[0].notes.has(Keymap.mapping()["("]), "Library preserves sharp symbol in PDF")
 	check(Parser.parse("Transpose -11\n[ceg]", true)[0].transposition == -11, "PDF transpose directive without colon")
 	check(app.library.search("old doll").size() == 2, "Case-insensitive title search")
