@@ -35,6 +35,7 @@ func _init() -> void:
 	songs.append({"id": "embers-of-the-past", "title": "Embers of the Past - Joshua Kyan Aalampour", "page": 0, "end_page": 0, "source": "Joshua Kyan Aalampour / Vals en La menor", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/embers_of_the_past.txt")})
 	songs.append({"id": "howls-moving-castle-flavio-belardo", "title": "Howl's Moving Castle - Flavio Belardo (Piano Arrangement)", "page": 0, "end_page": 0, "source": "Flavio Belardo / Merry-Go-Round of Life", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/howls_moving_castle_flavio_belardo.txt")})
 	songs.append({"id": "beloved-idyll", "title": "Beloved Idyll - Joshua Kyan Aalampour", "page": 0, "end_page": 0, "source": "Joshua Kyan Aalampour / Vals en Do menor", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/beloved_idyll.txt")})
+	songs.append({"id": "the-first-piece-of-my-soul", "title": "The First Piece of My Soul - Hakdo (Piano Solo)", "page": 0, "end_page": 0, "source": "Hakdo / Vals en Do menor", "has_sheet": true, "sheet": _load_sheet_file("res://assets/library/the_first_piece_of_my_soul.txt")})
 
 
 static func source_description(song: Dictionary) -> String:
