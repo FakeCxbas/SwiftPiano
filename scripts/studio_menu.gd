@@ -14,6 +14,8 @@ signal stage_3d_toggled(enabled: bool)
 var stage_3d_toggle: CheckButton
 signal fps_hud_toggled(enabled: bool)
 var fps_hud_toggle: CheckButton
+signal concert_voicing_toggled(enabled: bool)
+var concert_voicing_toggle: CheckButton
 signal auto_cascade_mode_changed(mode: String)
 
 signal appearance_changed(color: Color, rainbow: bool, light_mode: Variant)
@@ -580,6 +582,21 @@ func _build_appearance() -> void:
 		inst_flow.add_child(btn)
 	
 	set_active_instrument(current_instrument)
+	var sep_voicing: HSeparator = HSeparator.new()
+	sep_voicing.add_theme_stylebox_override("separator", StudioSkin.surface(Color("#1e3343"), Color("#1e3343"), 1))
+	box.add_child(sep_voicing)
+	box.add_child(label("DINÁMICA Y PESO DE CONCIERTO", 12, Color("#82a7b9")))
+	var voicing_desc: Label = label("Realza la melodía sobre los acordes internos, suaviza el acompañamiento y añade cuerpo grave de piano de cola.", 13)
+	voicing_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	voicing_desc.custom_minimum_size.y = 36
+	box.add_child(voicing_desc)
+	concert_voicing_toggle = CheckButton.new()
+	concert_voicing_toggle.text = "Peso de teclas y realce de melodía"
+	concert_voicing_toggle.button_pressed = true
+	concert_voicing_toggle.focus_mode = Control.FOCUS_NONE
+	concert_voicing_toggle.toggled.connect(func(enabled: bool) -> void:
+		concert_voicing_toggled.emit(enabled))
+	box.add_child(concert_voicing_toggle)
 	box = _studio_page(tabs, "Sala")
 	
 	var sep_rev = HSeparator.new()
@@ -1256,6 +1273,10 @@ func set_fps_hud_enabled(enabled: bool, emit_sig: bool = false) -> void:
 	_refresh_creator_styles()
 	if emit_sig:
 		fps_hud_toggled.emit(current_fps_enabled)
+
+func set_concert_voicing_enabled(enabled: bool) -> void:
+	if concert_voicing_toggle != null:
+		concert_voicing_toggle.set_pressed_no_signal(enabled)
 
 func set_auto_cascade_mode(mode: String, emit_sig: bool = false) -> void:
 	current_auto_cascade_mode = "falling" if mode == "falling" else "rising"
