@@ -12,6 +12,7 @@ const DEFAULT_VELOCITY = 108
 const RETRIGGER_FADE = 0.025
 const SUSTAIN_RELEASE_BASS = 2.60
 const SUSTAIN_RELEASE_TREBLE = 3.40
+const INNER_SUSTAIN_RELEASE: float = 1.45
 const NO_SUSTAIN_RELEASE = 0.12
 const MAX_RELEASED_TAILS = 14
 const MAX_RELEASED_BASS_TAILS = 3
@@ -181,6 +182,8 @@ const RECORDINGS_DIR = "user://recordings"
 var current_instrument: String = "grand_piano"
 var pool: Array[AudioStreamPlayer] = []
 var voices: Dictionary = {}
+var concert_voicing_enabled: bool = true: set = set_concert_voicing_enabled
+var _voice_order: int = 0
 var sustain_enabled = true
 var master_volume = 1.0
 var preload_usec = 0
@@ -300,7 +303,7 @@ func set_reverb_preset(preset: String) -> void:
 
 func _setup_bus() -> void:
 	# 0. Configure Master Bus: EQ (-3.0 dB @ 250/320 Hz, +1.5 dB @ 3200 Hz) -> Soft Compressor -> Limiter
-	var master_idx = AudioServer.get_bus_index("Master")
+	var master_idx: int = AudioServer.get_bus_index("Master")
 	if master_idx >= 0 and AudioServer.get_bus_effect_count(master_idx) == 0:
 		master_eq = AudioEffectEQ.new()
 		# Band 2 (250-320 Hz low-mid mud cut: -3.0 dB), Band 4 (3200 Hz hammer attack definition: +1.5 dB)
@@ -309,10 +312,10 @@ func _setup_bus() -> void:
 		AudioServer.add_bus_effect(master_idx, master_eq)
 		
 		master_compressor = AudioEffectCompressor.new()
-		master_compressor.threshold = -14.0
-		master_compressor.ratio = 2.2
-		master_compressor.attack_us = 2500.0
-		master_compressor.release_ms = 140.0
+		master_compressor.threshold = -5.5
+		master_compressor.ratio = 1.4
+		master_compressor.attack_us = 22000.0
+		master_compressor.release_ms = 240.0
 		master_compressor.gain = 6.5
 		AudioServer.add_bus_effect(master_idx, master_compressor)
 		
@@ -330,8 +333,8 @@ func _setup_bus() -> void:
 		master_eq = AudioServer.get_bus_effect(master_idx, 0) as AudioEffectEQ
 		master_compressor = AudioServer.get_bus_effect(master_idx, 1) as AudioEffectCompressor
 		master_limiter = AudioServer.get_bus_effect(master_idx, 2) as AudioEffectLimiter
-		for eff_i in range(AudioServer.get_bus_effect_count(master_idx)):
-			var eff = AudioServer.get_bus_effect(master_idx, eff_i)
+		for eff_i: int in range(AudioServer.get_bus_effect_count(master_idx)):
+			var eff: AudioEffect = AudioServer.get_bus_effect(master_idx, eff_i)
 			if eff is AudioEffectRecord:
 				record_effect = eff as AudioEffectRecord
 				break
@@ -339,15 +342,23 @@ func _setup_bus() -> void:
 			record_effect = AudioEffectRecord.new()
 			AudioServer.add_bus_effect(master_idx, record_effect)
 
+	if master_compressor != null:
+		master_compressor.threshold = -5.5
+		master_compressor.ratio = 1.4
+		master_compressor.attack_us = 22000.0
+		master_compressor.release_ms = 240.0
+		master_compressor.gain = 6.5
+
 	if AudioServer.get_bus_index("GrandPiano") >= 0:
-		var rev_idx = AudioServer.get_bus_index("PianoReverb")
+		var rev_idx: int = AudioServer.get_bus_index("PianoReverb")
 		if rev_idx >= 0 and AudioServer.get_bus_effect_count(rev_idx) > 0:
 			reverb_effect = AudioServer.get_bus_effect(rev_idx, 0) as AudioEffectReverb
+		_setup_role_buses()
 		_apply_instrument_reverb(current_instrument)
 		return
 
 	# 1. Setup Reverb Bus (sends to Master) - Close-Mic Studio Piano (nearly dry)
-	var rev_index = AudioServer.get_bus_index("PianoReverb")
+	var rev_index: int = AudioServer.get_bus_index("PianoReverb")
 	if rev_index < 0:
 		AudioServer.add_bus()
 		rev_index = AudioServer.bus_count - 1
@@ -369,22 +380,64 @@ func _setup_bus() -> void:
 
 	# 2. Setup GrandPiano Bus (effects: 0 = Compressor, 1 = Limiter, send -> PianoReverb)
 	AudioServer.add_bus()
-	var index = AudioServer.bus_count - 1
+	var index: int = AudioServer.bus_count - 1
 	AudioServer.set_bus_name(index, "GrandPiano")
 	AudioServer.set_bus_send(index, "PianoReverb")
-	var compressor = AudioEffectCompressor.new()
-	compressor.threshold = -16.0
-	compressor.ratio = 2.0
-	compressor.attack_us = 2000.0
-	compressor.release_ms = 140.0
-	compressor.gain = 2.5
+	var compressor: AudioEffectCompressor = AudioEffectCompressor.new()
+	compressor.threshold = -6.5
+	compressor.ratio = 1.35
+	compressor.attack_us = 20000.0
+	compressor.release_ms = 220.0
+	compressor.gain = 0.0
 	AudioServer.add_bus_effect(index, compressor)
-	var limiter = AudioEffectHardLimiter.new()
+	var limiter: AudioEffectHardLimiter = AudioEffectHardLimiter.new()
 	limiter.pre_gain_db = 0.0
 	limiter.ceiling_db = -1.5
 	limiter.release = 0.10
 	AudioServer.add_bus_effect(index, limiter)
+	_setup_role_buses()
 	_apply_instrument_reverb(current_instrument)
+
+func _setup_role_buses() -> void:
+	var piano_index: int = AudioServer.get_bus_index("GrandPiano")
+	AudioServer.set_bus_volume_db(piano_index, -4.5)
+	var compressor: AudioEffectCompressor = AudioServer.get_bus_effect(piano_index, 0) as AudioEffectCompressor
+	if compressor != null:
+		compressor.threshold = -6.5
+		compressor.ratio = 1.35
+		compressor.attack_us = 20000.0
+		compressor.release_ms = 220.0
+		compressor.gain = 0.0
+	for bus_name: String in ["PianoLead", "PianoWarm", "PianoBass"]:
+		var index: int = AudioServer.get_bus_index(bus_name)
+		if index >= 0:
+			AudioServer.set_bus_send(index, "GrandPiano")
+			continue
+		AudioServer.add_bus()
+		index = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(index, bus_name)
+		AudioServer.set_bus_send(index, "GrandPiano")
+		var equalizer: AudioEffectEQ = AudioEffectEQ.new()
+		match bus_name:
+			"PianoLead":
+				equalizer.set_band_gain_db(1, 0.8)
+				equalizer.set_band_gain_db(2, -1.2)
+				equalizer.set_band_gain_db(3, 1.5)
+				equalizer.set_band_gain_db(4, 1.8)
+			"PianoWarm":
+				var low_pass: AudioEffectLowPassFilter = AudioEffectLowPassFilter.new()
+				low_pass.cutoff_hz = 2350.0
+				low_pass.resonance = 0.35
+				low_pass.db = AudioEffectFilter.FILTER_12DB
+				AudioServer.add_bus_effect(index, low_pass)
+				equalizer.set_band_gain_db(2, -2.8)
+				equalizer.set_band_gain_db(3, -1.6)
+			"PianoBass":
+				equalizer.set_band_gain_db(0, 1.2)
+				equalizer.set_band_gain_db(1, 3.0)
+				equalizer.set_band_gain_db(2, -3.2)
+				equalizer.set_band_gain_db(3, 0.6)
+		AudioServer.add_bus_effect(index, equalizer)
 
 func _add_players(count: int) -> void:
 	for i in range(count):
@@ -456,18 +509,92 @@ func _get_sample_normalization(inst_id: String, reference_midi: int) -> float:
 	var inst_info = INSTRUMENTS.get(inst_id, {})
 	return float(inst_info.get("norm_gain", 2.4))
 
-func _calculate_release_time(midi: int, with_sustain: bool = false) -> float:
+func _calculate_release_time(midi: int, with_sustain: bool = false, role: String = "") -> float:
 	if not with_sustain:
 		return NO_SUSTAIN_RELEASE
+	if role == "inner":
+		return INNER_SUSTAIN_RELEASE
 	if midi < 55:
 		return SUSTAIN_RELEASE_BASS
 	return SUSTAIN_RELEASE_TREBLE
 
-func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY) -> void:
-	# 1. Clean Voice Stealing / Retrigger on the same MIDI note (0.025s cut)
+func is_piano_instrument() -> bool:
+	return str(INSTRUMENTS.get(current_instrument, {}).get("type", "piano")) == "piano"
+
+func is_concert_voicing_active() -> bool:
+	return concert_voicing_enabled and is_piano_instrument()
+
+func set_concert_voicing_enabled(enabled: bool) -> void:
+	if concert_voicing_enabled == enabled:
+		return
+	concert_voicing_enabled = enabled
+	var use_voicing: bool = is_concert_voicing_active()
+	var bus_names: Dictionary = {"lead": "PianoLead", "inner": "PianoWarm", "bass": "PianoBass"}
+	for token: int in voices.keys():
+		var voice: Dictionary = voices[token]
+		if bool(voice.get("stolen", false)):
+			continue
+		var prev_role: String = str(voice.get("role", ""))
+		var midi: int = int(voice.get("midi", 60))
+		var voiced_vel: int = int(voice.get("voiced_velocity", voice.get("velocity", DEFAULT_VELOCITY)))
+		var unvoiced_vel: int = int(voice.get("unvoiced_velocity", voice.get("velocity", DEFAULT_VELOCITY)))
+		var req_role: String = str(voice.get("requested_role", ""))
+		var effective_role: String = ""
+		var weight: float = 1.0
+		var target_bus: String = "GrandPiano"
+		if use_voicing:
+			if req_role in ["lead", "bass", "inner"]:
+				effective_role = req_role
+				weight = _compute_role_weight(midi, voiced_vel, effective_role)
+			else:
+				effective_role = "inner" if (voiced_vel <= 76 and midi >= 48) else ("bass" if midi < 50 else "lead")
+			var bus_name: String = bus_names[effective_role]
+			if AudioServer.get_bus_index(bus_name) >= 0:
+				target_bus = bus_name
+		if not bool(voice.get("released", false)):
+			voice["gain"] = float(voice.get("voiced_gain", voice.get("gain", 0.0))) if use_voicing else float(voice.get("unvoiced_gain", voice.get("gain", 0.0)))
+			voice["velocity"] = voiced_vel if use_voicing else unvoiced_vel
+		voice["role"] = effective_role
+		voice["weight"] = weight
+		var player: AudioStreamPlayer = voice.get("player")
+		if player != null:
+			player.bus = target_bus
+			player.volume_linear = float(voice.get("gain", 0.0)) * weight * float(voice.get("norm", 1.0)) * master_volume
+		if bool(voice.get("released", false)) and sustain_enabled and (prev_role == "inner" or effective_role == "inner") and prev_role != effective_role:
+			_release(token, _calculate_release_time(midi, true, effective_role))
+
+func _compute_role_weight(midi: int, velocity: int, role: String) -> float:
+	match role:
+		"inner":
+			return clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.85) * 0.78, 0.28, 0.85)
+		"bass":
+			var bass_body: float = lerpf(1.16, 1.04, clampf(float(midi - 28) / 26.0, 0.0, 1.0))
+			return bass_body * clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.55), 0.55, 1.18)
+		"lead":
+			var lead_bloom: float = 1.0 + 0.10 * clampf(float(midi - 60) / 30.0, 0.0, 1.0)
+			return lead_bloom * clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.50), 0.65, 1.20)
+	return 1.0
+
+func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY, role: String = "", unvoiced_velocity: int = -1) -> void:
+	var use_voicing: bool = is_concert_voicing_active()
+	var effective_role: String = ""
+	var weight: float = 1.0
+	var target_bus: String = "GrandPiano"
+	if use_voicing:
+		if role in ["lead", "bass", "inner"]:
+			effective_role = role
+		else:
+			effective_role = "inner" if (velocity <= 76 and midi >= 48) else ("bass" if midi < 50 else "lead")
+		var bus_names: Dictionary = {"lead": "PianoLead", "inner": "PianoWarm", "bass": "PianoBass"}
+		var bus_name: String = bus_names[effective_role]
+		if AudioServer.get_bus_index(bus_name) >= 0:
+			target_bus = bus_name
+		if role in ["lead", "bass", "inner"]:
+			weight = _compute_role_weight(midi, velocity, effective_role)
+	# Retrigger only the same MIDI note, preserving independent held voices.
 	var released_tokens: Array[int] = []
 	var released_bass_tokens: Array[int] = []
-	for prev_token in voices.keys():
+	for prev_token: int in voices.keys():
 		if prev_token == token:
 			_finish(prev_token)
 		elif voices[prev_token].get("midi", -1) == midi and not voices[prev_token].get("stolen", false):
@@ -475,54 +602,113 @@ func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY) -> void:
 			voices[prev_token].stolen = true
 			_release(prev_token, RETRIGGER_FADE)
 		elif voices[prev_token].get("released", false) and not voices[prev_token].get("stolen", false):
-			released_tokens.append(int(prev_token))
+			released_tokens.append(prev_token)
 			if voices[prev_token].get("midi", 60) < 55:
-				released_bass_tokens.append(int(prev_token))
-	# 2. Smart Anti-Mud Damper Control: keep lush sustain on current chord/arpeggio,
-	# while gently damping oldest released tails during fast dense passages.
+				released_bass_tokens.append(prev_token)
 	if midi < 55 and released_bass_tokens.size() >= MAX_RELEASED_BASS_TAILS:
 		released_bass_tokens.sort()
-		var old_bass = released_bass_tokens[0]
+		var old_bass: int = released_bass_tokens[0]
 		voices[old_bass].stolen = true
 		_release(old_bass, 0.32)
 	if released_tokens.size() >= MAX_RELEASED_TAILS:
 		released_tokens.sort()
-		var old_tok = released_tokens[0]
+		var old_tok: int = released_tokens[0]
 		if voices.has(old_tok) and not voices[old_tok].get("stolen", false):
 			voices[old_tok].stolen = true
 			_release(old_tok, 0.32)
+	if use_voicing and role != "":
+		var released_inner_tokens: Array[int] = []
+		for prev_token: int in voices.keys():
+			var previous: Dictionary = voices[prev_token]
+			if not previous.get("released", false) or previous.get("stolen", false):
+				continue
+			if previous.get("role", "") == "inner":
+				released_inner_tokens.append(prev_token)
+			if effective_role == "bass" and role == "bass" and midi < 54 and previous.get("role", "") == "bass" and int(previous.get("midi", -1)) % 12 != midi % 12:
+				previous.stolen = true
+				_release(prev_token, 0.42)
+		released_inner_tokens.sort_custom(func(a: int, b: int) -> bool:
+			return int(voices[a].get("order", 0)) < int(voices[b].get("order", 0)))
+		while released_inner_tokens.size() > 8:
+			var old_inner: int = released_inner_tokens.pop_front()
+			voices[old_inner].stolen = true
+			_release(old_inner, 0.28)
 	var player: AudioStreamPlayer = null
-	for candidate in pool:
+	for candidate: AudioStreamPlayer in pool:
 		if not candidate.playing and not _owned(candidate):
 			player = candidate
 			break
 	if player == null:
 		_add_players(16)
 		player = pool[pool.size() - 16]
-	var reference = 60
-	var distance = 999
-	for base in bank:
+	var reference: int = 60
+	var distance: int = 999
+	for base: int in bank:
 		if absi(midi - base) < distance:
 			reference = base
 			distance = absi(midi - base)
 	player.stream = bank[reference]
 	player.pitch_scale = pow(2.0, (midi - reference) / 12.0)
-	var inst_info = INSTRUMENTS.get(current_instrument, {})
-	var inst_gain = inst_info.get("gain", 1.0)
-	var sample_norm = _get_sample_normalization(current_instrument, reference)
-	var vel_curve = pow(clampi(velocity, 0, 127) / 127.0, 1.15)
-	var gain = vel_curve * SAMPLE_GAIN * inst_gain
+	var inst_info: Dictionary = INSTRUMENTS.get(current_instrument, {})
+	var inst_gain: float = float(inst_info.get("gain", 1.0))
+	var sample_norm: float = _get_sample_normalization(current_instrument, reference)
+	var raw_vel: int = velocity if unvoiced_velocity < 0 else unvoiced_velocity
+	var play_vel: int = velocity if use_voicing else raw_vel
+	var voiced_gain: float = pow(clampi(velocity, 0, 127) / 127.0, 1.15) * SAMPLE_GAIN * inst_gain
+	var unvoiced_gain: float = pow(clampi(raw_vel, 0, 127) / 127.0, 1.15) * SAMPLE_GAIN * inst_gain
+	var gain: float = voiced_gain if use_voicing else unvoiced_gain
+	_voice_order += 1
 	voices[token] = {
 		"player": player,
 		"gain": gain,
+		"voiced_gain": voiced_gain,
+		"unvoiced_gain": unvoiced_gain,
 		"norm": sample_norm,
+		"weight": weight,
+		"role": effective_role,
+		"requested_role": role,
+		"velocity": play_vel,
+		"voiced_velocity": velocity,
+		"unvoiced_velocity": raw_vel,
+		"order": _voice_order,
 		"tween": null,
 		"released": false,
 		"stolen": false,
 		"midi": midi
 	}
-	player.volume_linear = gain * sample_norm * master_volume
+	player.bus = target_bus
+	player.volume_linear = gain * weight * sample_norm * master_volume
 	player.play()
+
+func revoice(token: int, velocity: int, role: String) -> void:
+	if not voices.has(token):
+		return
+	var voice: Dictionary = voices[token]
+	if bool(voice.get("released", false)) or bool(voice.get("stolen", false)):
+		return
+	if not is_piano_instrument() or not (role in ["lead", "bass", "inner"]):
+		return
+	var midi: int = int(voice.get("midi", 60))
+	var inst_info: Dictionary = INSTRUMENTS.get(current_instrument, {})
+	var inst_gain: float = float(inst_info.get("gain", 1.0))
+	var voiced_gain: float = pow(clampi(velocity, 0, 127) / 127.0, 1.15) * SAMPLE_GAIN * inst_gain
+	voice["voiced_gain"] = voiced_gain
+	voice["voiced_velocity"] = velocity
+	voice["requested_role"] = role
+	if not is_concert_voicing_active():
+		return
+	var weight: float = _compute_role_weight(midi, velocity, role)
+	var bus_names: Dictionary = {"lead": "PianoLead", "inner": "PianoWarm", "bass": "PianoBass"}
+	var bus_name: String = bus_names[role]
+	var player: AudioStreamPlayer = voice.get("player")
+	if player != null:
+		if AudioServer.get_bus_index(bus_name) >= 0:
+			player.bus = bus_name
+		player.volume_linear = voiced_gain * weight * float(voice.get("norm", 1.0)) * master_volume
+	voice["gain"] = voiced_gain
+	voice["weight"] = weight
+	voice["role"] = role
+	voice["velocity"] = velocity
 
 func _owned(player: AudioStreamPlayer) -> bool:
 	for voice in voices.values():
@@ -537,7 +723,7 @@ func note_off(token: int) -> void:
 	if voices[token].get("stolen", false):
 		return
 	var midi: int = voices[token].get("midi", 60)
-	var release_time = _calculate_release_time(midi, sustain_enabled)
+	var release_time: float = _calculate_release_time(midi, sustain_enabled, str(voices[token].get("role", "")))
 	_release(token, release_time)
 
 func _release(token: int, seconds: float) -> void:
@@ -560,10 +746,10 @@ func _release(token: int, seconds: float) -> void:
 
 func _set_gain(value: float, token: int) -> void:
 	if voices.has(token):
-		var safe_val = maxf(0.0, value)
+		var safe_val: float = maxf(0.0, value)
 		voices[token].gain = safe_val
 		var norm: float = voices[token].get("norm", 1.0)
-		voices[token].player.volume_linear = safe_val * norm * master_volume
+		voices[token].player.volume_linear = safe_val * float(voices[token].get("weight", 1.0)) * norm * master_volume
 
 func _finish(token: int) -> void:
 	if voices.has(token):
@@ -575,27 +761,27 @@ func _finish(token: int) -> void:
 func set_sustain(value: bool) -> void:
 	if value and not sustain_enabled:
 		# Catch a note whose damper release is still audible (repedaling).
-		for token in voices.keys():
-			var voice = voices[token]
+		for token: int in voices.keys():
+			var voice: Dictionary = voices[token]
 			if voice.released and not voice.get("stolen", false):
 				var midi: int = voice.get("midi", 60)
-				_release(token, _calculate_release_time(midi, true))
+				_release(token, _calculate_release_time(midi, true, str(voice.get("role", ""))))
 	if sustain_enabled and not value:
-		for token in voices.keys():
+		for token: int in voices.keys():
 			if voices[token].released and not voices[token].get("stolen", false):
 				_release(token, NO_SUSTAIN_RELEASE)
 	sustain_enabled = value
 
 func set_volume(percent: int) -> void:
 	master_volume = clampf(percent / 100.0, 0.0, 2.0)
-	var norm_vol = clampf(percent / 200.0, 0.0, 1.0)
-	var master_idx = AudioServer.get_bus_index("Master")
+	var norm_vol: float = clampf(percent / 200.0, 0.0, 1.0)
+	var master_idx: int = AudioServer.get_bus_index("Master")
 	if master_idx >= 0:
 		AudioServer.set_bus_mute(master_idx, norm_vol <= 0.001)
 		AudioServer.set_bus_volume_db(master_idx, -80.0 if norm_vol <= 0.001 else linear_to_db(norm_vol))
-	for voice in voices.values():
+	for voice: Dictionary in voices.values():
 		var norm: float = voice.get("norm", 1.0)
-		voice.player.volume_linear = voice.gain * norm * master_volume
+		voice.player.volume_linear = voice.gain * float(voice.get("weight", 1.0)) * norm * master_volume
 
 func stop_all() -> void:
 	for voice in voices.values():

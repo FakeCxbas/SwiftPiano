@@ -11,6 +11,7 @@ const Visualizer = preload("res://scripts/synth_visualizer.gd")
 const Keyboard = preload("res://scripts/piano_keyboard_renderer.gd")
 const Stage3D = preload("res://scripts/piano_stage_3d.gd")
 const Parser = preload("res://scripts/sheet_parser.gd")
+const ConcertVoicing = preload("res://scripts/concert_voicing.gd")
 const MidiImporter = preload("res://scripts/midi_importer.gd")
 const CreatorOverlay = preload("res://scripts/creator_overlay.gd")
 var midi_dialog: FileDialog
@@ -44,6 +45,7 @@ var transposition = 0
 var user_transposition = 0
 var velocity = 108
 var synth_enabled = true
+var concert_voicing_enabled: bool = true
 var space_held = false
 var zen_mode: bool = false
 var shorts_mode: bool = false
@@ -64,6 +66,7 @@ var _bot_finishing: bool = false
 var _bot_current_step: int = -1
 var _bot_completed: bool = false
 var step_delays: Array[float] = []
+var step_voicing: Array[Dictionary] = []
 var audio: Node
 var visualizer: Control
 var stage_3d: PianoStage3D
@@ -191,6 +194,7 @@ func _ready() -> void:
 	_sync_stage_mode()
 	audio = AudioEngine.new()
 	add_child(audio)
+	audio.concert_voicing_enabled = concert_voicing_enabled
 	_sync_sustain()
 	_set_volume(volume_slider.value)
 	if menu != null:
@@ -294,6 +298,8 @@ func _build_ui() -> void:
 	menu.auto_cascade_mode_changed.connect(set_auto_cascade_mode)
 	menu.set_auto_cascade_mode(auto_cascade_mode, false)
 	menu.instrument_changed.connect(_change_instrument)
+	menu.concert_voicing_toggled.connect(set_concert_voicing_enabled)
+	menu.set_concert_voicing_enabled(concert_voicing_enabled)
 	menu.bar_style_changed.connect(_change_bar_style)
 	menu.reverb_preset_changed.connect(_change_reverb_preset)
 	menu.creator_zen_requested.connect(func(): set_zen_mode(true))
@@ -698,10 +704,14 @@ func _trigger_bot_step() -> void:
 	transposition = base_t + user_transposition
 	_bot_current_delay = _get_step_delay(idx)
 	_bot_note_released = false
-	var vels: Dictionary = step.get("velocities", {})
+	var voicing_entry: Dictionary = step_voicing[idx] if idx >= 0 and idx < step_voicing.size() else {}
+	var raw_vels: Dictionary = step.get("velocities", {})
+	var is_piano: bool = _is_piano_instrument()
+	var vels: Dictionary = voicing_entry.get("voiced_velocities", raw_vels) if is_piano else raw_vels
+	var roles: Dictionary = voicing_entry.get("voice_roles", {}) if is_piano else {}
 	if visualizer != null:
 		visualizer.record_playback_step(step, _bot_current_delay, transposition)
-	_press_source("bot", step.notes, vels)
+	_press_source("bot", step.notes, vels, roles, raw_vels, is_piano)
 	if idx + 1 < steps.size():
 		step_index = idx + 1
 	elif auto_loop_enabled:
@@ -895,6 +905,7 @@ func save_user_settings(path: String = settings_path) -> void:
 	if audio != null:
 		cfg.set_value("audio", "instrument", audio.get_current_instrument_id())
 		cfg.set_value("audio", "reverb_preset", audio.current_reverb_preset)
+		cfg.set_value("audio", "concert_voicing", concert_voicing_enabled)
 		if volume_slider != null:
 			cfg.set_value("audio", "volume", volume_slider.value)
 	if creator_overlay != null:
@@ -939,6 +950,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 	if audio != null:
 		var saved_inst = str(cfg.get_value("audio", "instrument", audio.get_current_instrument_id()))
 		var saved_rev = str(cfg.get_value("audio", "reverb_preset", audio.current_reverb_preset))
+		var saved_voicing = bool(cfg.get_value("audio", "concert_voicing", concert_voicing_enabled))
 		var saved_vol = float(cfg.get_value("audio", "volume", 100.0))
 		if menu != null:
 			menu.set_active_instrument(saved_inst)
@@ -947,6 +959,7 @@ func load_user_settings(path: String = settings_path) -> bool:
 				volume_slider.set_value_no_signal(saved_vol)
 		_change_instrument(saved_inst)
 		_change_reverb_preset(saved_rev)
+		set_concert_voicing_enabled(saved_voicing)
 		_set_volume(saved_vol)
 	if creator_overlay != null:
 		var b_en = bool(cfg.get_value("creator", "branding_enabled", creator_overlay.branding_enabled))
@@ -1116,6 +1129,20 @@ func _change_instrument(id: String) -> void:
 				menu.song_field.text = menu.song_title.text
 	save_user_settings()
 
+func _is_piano_instrument() -> bool:
+	return audio == null or not audio.has_method("is_piano_instrument") or bool(audio.is_piano_instrument())
+
+func _is_concert_voicing_active() -> bool:
+	return concert_voicing_enabled and _is_piano_instrument()
+
+func set_concert_voicing_enabled(enabled: bool) -> void:
+	concert_voicing_enabled = enabled
+	if audio != null:
+		audio.concert_voicing_enabled = concert_voicing_enabled
+	if menu != null and menu.has_method("set_concert_voicing_enabled"):
+		menu.set_concert_voicing_enabled(concert_voicing_enabled)
+	save_user_settings()
+
 func _change_bar_style(style: String) -> void:
 	if visualizer != null:
 		visualizer.bar_style = style
@@ -1227,8 +1254,11 @@ func _reset_auto() -> void:
 func set_transposition(value: int) -> void:
 	var base_t = steps[step_index].transposition if not steps.is_empty() and steps[step_index].transposition != null else (steps[0].transposition if not steps.is_empty() and steps[0].transposition != null else 0)
 	var new_user_t = clampi(value - base_t, -48, 48)
+	var prev_user_t: int = user_transposition
 	user_transposition = new_user_t
 	transposition = clampi(base_t + user_transposition, -48, 48)
+	if user_transposition != prev_user_t and not steps.is_empty():
+		step_voicing = ConcertVoicing.build_step_voicing(steps, user_transposition)
 	var sign_str = "+" if transposition > 0 else ""
 	var msg = "Transposición: %s%d semitonos" % [sign_str, transposition]
 	if creator_overlay != null:
@@ -1246,6 +1276,7 @@ func _compile_sheet() -> void:
 	sheet_text_edit.set_caret_column(0)
 	sheet_text_edit.scroll_vertical = 0
 	steps = Parser.parse(compiled_text, library_sheet)
+	step_voicing = ConcertVoicing.build_step_voicing(steps, user_transposition)
 	step_delays = Parser.parse_delays(compiled_text)
 	step_labels.clear()
 	var labels = Keymap.labels()
@@ -1428,8 +1459,12 @@ func _input(event: InputEvent) -> void:
 			var step = steps[step_index]
 			var base_t = step.transposition if step.transposition != null else 0
 			transposition = base_t + user_transposition
-			var vels: Dictionary = step.get("velocities", {})
-			_press_source(code, step.notes, vels)
+			var voicing_entry: Dictionary = step_voicing[step_index] if step_index >= 0 and step_index < step_voicing.size() else {}
+			var raw_vels: Dictionary = step.get("velocities", {})
+			var is_piano: bool = _is_piano_instrument()
+			var vels: Dictionary = voicing_entry.get("voiced_velocities", raw_vels) if is_piano else raw_vels
+			var roles: Dictionary = voicing_entry.get("voice_roles", {}) if is_piano else {}
+			_press_source(code, step.notes, vels, roles, raw_vels, is_piano)
 			if step_index + 1 < steps.size():
 				step_index += 1
 			elif auto_loop_enabled:
@@ -1445,24 +1480,51 @@ func _input(event: InputEvent) -> void:
 			_press_source(code, [midi])
 			get_viewport().set_input_as_handled()
 
-func _press_source(source: Variant, notes: Array, note_velocities: Dictionary = {}) -> void:
+func _press_source(source: Variant, notes: Array, note_velocities: Dictionary = {}, note_roles: Dictionary = {}, raw_velocities: Dictionary = {}, has_sheet_voicing: bool = false) -> void:
 	if sources.has(source):
 		return
 	var group: Array[Dictionary] = []
 	var first_color: Color = active_color
 	var pitches: Array[int] = []
 	var has_deep_bass: bool = false
+	var press_ms: int = Time.get_ticks_msec()
+	var use_live_voicing: bool = _is_piano_instrument() and not has_sheet_voicing and note_velocities.is_empty() and note_roles.is_empty() and not notes.is_empty()
+	var live_vels: Dictionary = {}
+	var live_roles: Dictionary = {}
+	if use_live_voicing:
+		var chord_voices: Array[Dictionary] = []
+		var context_pitches: Array[int] = []
+		for held_group in sources.values():
+			for voice in held_group:
+				if bool(voice.get("live_voiced", false)) and (press_ms - int(voice.get("onset_ms", 0))) <= 90:
+					chord_voices.append(voice)
+					context_pitches.append(int(voice.get("midi", -1)))
+		for midi in notes:
+			var p: int = int(midi) + transposition
+			if p >= 21 and p <= 108:
+				context_pitches.append(p)
+		var live_voicing: Dictionary = ConcertVoicing.voice_live_chord(context_pitches, velocity)
+		live_vels = live_voicing.get("velocities", {})
+		live_roles = live_voicing.get("roles", {})
+		if audio != null and audio.has_method("revoice"):
+			for voice in chord_voices:
+				var held_midi: int = int(voice.get("midi", -1))
+				if live_vels.has(held_midi) and live_roles.has(held_midi):
+					audio.revoice(int(voice.get("token", -1)), int(live_vels[held_midi]), str(live_roles[held_midi]))
 	for midi in notes:
 		var pitch = int(midi) + transposition
 		if pitch < 21 or pitch > 108:
 			continue
-		var note_vel = int(note_velocities.get(midi, velocity))
+		var voiced_vel: int = int(live_vels.get(pitch, velocity)) if use_live_voicing else int(note_velocities.get(midi, velocity))
+		var unvoiced_vel: int = velocity if use_live_voicing else (int(raw_velocities.get(midi, velocity)) if has_sheet_voicing else int(note_velocities.get(midi, velocity)))
+		var effective_vel: int = voiced_vel if _is_concert_voicing_active() else unvoiced_vel
+		var note_role: String = str(live_roles.get(pitch, "")) if use_live_voicing else str(note_roles.get(midi, ""))
 		pitches.append(pitch)
-		if pitch < 45 and note_vel >= 85:
+		if pitch < 45 and effective_vel >= 85:
 			has_deep_bass = true
 		serial += 1
-		group.append({"token": serial, "midi": pitch})
-		audio.note_on(serial, pitch, note_vel)
+		group.append({"token": serial, "midi": pitch, "onset_ms": press_ms, "live_voiced": use_live_voicing})
+		audio.note_on(serial, pitch, voiced_vel, note_role, unvoiced_vel)
 		var color = Color.from_hsv(fmod(Time.get_ticks_msec() * 0.00008, 1.0), 0.65, 1.0) if rainbow else active_color
 		first_color = color
 		keyboard.press(pitch, color)
