@@ -50,19 +50,20 @@ func _test_real_sheet_voicing() -> void:
 	var roles: Dictionary = steps[0]["voice_roles"]
 	check(steps[0]["notes"] == [60, 72], "Beloved Idyll step 0 is [ts]")
 	check(roles.get(72, "") == "lead" and roles.get(60, "") == "bass", "[ts] assigns lead to 72 and bass to 60")
-	check(int(vels.get(72, 0)) >= int(vels.get(60, 0)) + 18, "[ts] lead is at least 18 velocity above bass")
+	check(int(vels.get(72, 0)) > int(vels.get(60, 0)) and int(vels.get(60, 0)) >= 90, "[ts] lead leads above a present, audible bass >= 90")
 	vels = steps[1]["voiced_velocities"]
 	roles = steps[1]["voice_roles"]
 	check(steps[1]["notes"] == [63, 67], "Beloved Idyll step 1 is [Yo]")
 	check(roles.get(63, "") == "inner" and roles.get(67, "") == "inner", "[Yo] notes are both inner voices")
-	check(int(vels.get(63, 127)) <= 68 and int(vels.get(67, 127)) <= 68, "[Yo] velocities stay at or below 68")
+	check(int(vels.get(63, 0)) >= 78 and int(vels.get(67, 127)) <= 94, "[Yo] velocities stay audible between 78 and 94")
 	check(int(steps[8]["voiced_velocities"].get(63, 127)) < int(steps[7]["voiced_velocities"].get(63, 127)), "Consecutive [Yo] step 8 attenuates below step 7")
 	vels = steps[2]["voiced_velocities"]
 	roles = steps[2]["voice_roles"]
 	check(steps[2]["notes"] == [63, 67, 75], "Beloved Idyll step 2 is [YoD]")
-	check(roles.get(75, "") == "lead" and int(vels.get(75, 0)) >= 110, "[YoD] D is a lead at velocity 110 or above")
-	check(roles.get(67, "") == "inner" and int(vels.get(67, 127)) <= 70, "[YoD] o is inner at velocity 70 or below")
-	check(int(vels.get(75, 0)) - int(vels.get(67, 127)) >= 40, "[YoD] lead exceeds inner by at least 40")
+	check(roles.get(75, "") == "lead" and int(vels.get(75, 0)) >= 106, "[YoD] D is a lead at velocity 106 or above")
+	check(roles.get(67, "") == "inner" and int(vels.get(67, 0)) >= 78 and int(vels.get(67, 127)) <= 92, "[YoD] o is inner within 78..92")
+	var yod_spread: int = int(vels.get(75, 0)) - int(vels.get(67, 127))
+	check(yod_spread >= 16 and yod_spread <= 32, "[YoD] lead exceeds inner cleanly within 16..32 velocity spread")
 	var climax_index: int = -1
 	for i: int in range(steps.size() - 1):
 		if steps[i].get("token", "") == "[^V]" and steps[i + 1].get("token", "") == "[qEy]":
@@ -73,14 +74,18 @@ func _test_real_sheet_voicing() -> void:
 		vels = steps[climax_index]["voiced_velocities"]
 		roles = steps[climax_index]["voice_roles"]
 		check(steps[climax_index]["notes"] == [46, 92], "Climax [^V] resolves to MIDI 46 and 92")
-		check(roles.get(92, "") == "lead" and int(vels.get(92, 0)) >= 118, "Climax V is lead at velocity 118 or above")
-		check(roles.get(46, "") == "bass" and int(vels.get(46, 0)) >= 92, "Climax ^ is bass at velocity 92 or above")
+		check(roles.get(92, "") == "lead" and int(vels.get(92, 0)) >= 110, "Climax V is lead at velocity 110 or above")
+		check(roles.get(46, "") == "bass" and int(vels.get(46, 0)) >= 98, "Climax ^ is bass at velocity 98 or above")
 		vels = steps[climax_index + 1]["voiced_velocities"]
 		roles = steps[climax_index + 1]["voice_roles"]
-		var all_inner: bool = true
-		for note: Variant in steps[climax_index + 1]["notes"]:
-			all_inner = all_inner and roles.get(int(note), "") == "inner" and int(vels.get(int(note), 127)) <= 68
-		check(all_inner, "Every [qEy] note is inner at velocity 68 or below")
+		var qey_notes: Array = steps[climax_index + 1]["notes"]
+		var root_midi: int = int(qey_notes[0])
+		check(roles.get(root_midi, "") == "bass" and int(vels.get(root_midi, 0)) >= 90, "[qEy] bass root receives bass role >= 90")
+		var inner_audible: bool = qey_notes.size() >= 2
+		for j: int in range(1, qey_notes.size()):
+			var inner_m: int = int(qey_notes[j])
+			inner_audible = inner_audible and roles.get(inner_m, "") == "inner" and int(vels.get(inner_m, 0)) >= 78 and int(vels.get(inner_m, 127)) <= 94
+		check(inner_audible, "Every upper [qEy] accompaniment note is inner within 78..94")
 
 func _test_audio_separation_and_capture() -> void:
 	var local_engine: Node = AudioEngine.new()
@@ -88,65 +93,73 @@ func _test_audio_separation_and_capture() -> void:
 	await process_frame
 	local_engine.set_volume(100)
 	local_engine.stop_all()
-	local_engine.note_on(401, 75, 117, "lead")
-	local_engine.note_on(402, 67, 65, "inner")
+	local_engine.note_on(401, 75, 110, "lead")
+	local_engine.note_on(402, 67, 86, "inner")
 	var voices: Dictionary = local_engine.get("voices")
 	var lead_player: AudioStreamPlayer = voices[401]["player"]
 	var inner_player: AudioStreamPlayer = voices[402]["player"]
-	check(linear_to_db(lead_player.volume_linear / inner_player.volume_linear) >= 8.0, "Lead player level exceeds inner by at least 8 dB")
+	var sep_db: float = linear_to_db(lead_player.volume_linear / inner_player.volume_linear)
+	check(sep_db >= 3.0 and sep_db <= 6.0, "Lead player exceeds inner in a complementary 3.0..6.0 dB range")
 	local_engine.stop_all()
 	local_engine.set_sustain(true)
-	local_engine.note_on(410, 75, 117, "lead")
-	local_engine.note_on(411, 41, 94, "bass")
+	local_engine.note_on(410, 75, 110, "lead")
+	local_engine.note_on(411, 41, 96, "bass")
 	local_engine.note_off(411)
-	local_engine.note_on(412, 46, 94, "bass")
+	local_engine.note_on(412, 46, 96, "bass")
 	voices = local_engine.get("voices")
 	check(bool(voices[411]["stolen"]), "F2 released under sustain is stolen by harmonic A#2")
 	check(not bool(voices[410]["stolen"]), "Held lead 75 survives bass harmonic half-pedal stealing")
 	local_engine.stop_all()
-	local_engine.set_sustain(false)
+	local_engine.set_sustain(true)
 	var master_index: int = AudioServer.get_bus_index("Master")
 	var capture: AudioEffectCapture = AudioEffectCapture.new()
 	capture.buffer_length = 3.0
 	var capture_index: int = AudioServer.get_bus_effect_count(master_index)
 	AudioServer.add_bus_effect(master_index, capture)
-	var disabled_effects: Array[Vector2i] = []
-	for bus_name: String in ["PianoLead", "PianoWarm", "PianoBass", "PianoReverb", "Master"]:
-		var bus_index: int = AudioServer.get_bus_index(bus_name)
-		for effect_index: int in range(AudioServer.get_bus_effect_count(bus_index)):
-			if bus_index == master_index and effect_index == capture_index:
-				continue
-			disabled_effects.append(Vector2i(bus_index, effect_index))
-			AudioServer.set_bus_effect_enabled(bus_index, effect_index, false)
-	local_engine.set_volume(100)
+	local_engine.set_volume(200)
 	var rms: Array[float] = []
+	var peaks: Array[float] = []
 	var clipped_counts: Array[int] = []
-	for case_index: int in range(2):
+	for case_index: int in range(3):
 		local_engine.stop_all()
 		await create_timer(0.2).timeout
 		capture.clear_buffer()
 		if case_index == 0:
-			local_engine.note_on(420, 75, 117, "lead")
+			local_engine.note_on(420, 69, 110, "lead")
+			local_engine.note_off(420)
+		elif case_index == 1:
+			local_engine.note_on(421, 69, 86, "inner")
+			local_engine.note_off(421)
 		else:
-			local_engine.note_on(421, 67, 65, "inner")
+			local_engine.note_on(430, 46, 102, "bass")
+			local_engine.note_on(431, 58, 88, "inner")
+			local_engine.note_on(432, 63, 90, "inner")
+			local_engine.note_on(433, 67, 92, "inner")
+			local_engine.note_on(434, 92, 112, "lead")
 		await create_timer(0.8).timeout
 		var frames: PackedVector2Array = capture.get_buffer(capture.get_frames_available())
+		var peak: float = 0.0
 		var energy: float = 0.0
 		var clipped: int = 0
 		for frame: Vector2 in frames:
+			peak = maxf(peak, maxf(absf(frame.x), absf(frame.y)))
 			energy += frame.length_squared()
 			if absf(frame.x) >= 1.0 or absf(frame.y) >= 1.0:
 				clipped += 1
 		rms.append(sqrt(energy / maxf(1.0, float(frames.size() * 2))))
+		peaks.append(peak)
 		clipped_counts.append(clipped)
 		check(not frames.is_empty(), "Master capture receives audio for case %d" % case_index)
-	check(rms.size() == 2 and linear_to_db(rms[0] / maxf(rms[1], 0.000001)) >= 8.0, "Captured lead RMS exceeds inner RMS by at least 8 dB")
-	check(clipped_counts.size() == 2 and clipped_counts[0] == 0 and clipped_counts[1] == 0, "Lead and inner Master captures have zero clipped frames")
+		check(peak <= db_to_linear(-0.3) + 0.001, "Live full-chain peak stays under -0.3 dBFS ceiling for case %d" % case_index)
+	var captured_sep_db: float = linear_to_db(rms[0] / maxf(rms[1], 0.000001))
+	var chord_crest_db: float = linear_to_db(peaks[2] / maxf(rms[2], 0.000001))
+	check(peaks.size() == 3 and peaks[0] <= db_to_linear(-2.5) and peaks[1] <= db_to_linear(-4.5), "Single lead and inner notes preserve clean headroom below -2.5 / -4.5 dBFS at 100% volume")
+	check(rms.size() == 3 and captured_sep_db >= 2.5 and captured_sep_db <= 6.5, "Captured lead vs inner RMS stays balanced within 2.5..6.5 dB")
+	check(chord_crest_db >= 6.0, "Two-hand 5-note climax chord preserves >= 6 dB crest factor without saturation")
+	check(clipped_counts.size() == 3 and clipped_counts[0] == 0 and clipped_counts[1] == 0 and clipped_counts[2] == 0, "Lead, inner, and climax Master captures have zero clipped frames")
 	local_engine.stop_all()
 	await create_timer(0.15).timeout
 	AudioServer.remove_bus_effect(master_index, capture_index)
-	for bus_effect: Vector2i in disabled_effects:
-		AudioServer.set_bus_effect_enabled(bus_effect.x, bus_effect.y, true)
 	local_engine.queue_free()
 	await process_frame
 
@@ -389,8 +402,8 @@ func _test_audio_engine() -> void:
 	engine.concert_voicing_enabled = true
 	engine.note_on(101, 72, 108, "lead")
 	var lead: Dictionary = engine.voices[101]
-	var lead_bloom: float = 1.0 + 0.10 * clampf(float(72 - 60) / 30.0, 0.0, 1.0)
-	var expected_lead_weight: float = lead_bloom * clampf(pow(108.0 / 108.0, 0.50), 0.65, 1.20)
+	var lead_bloom: float = 1.0 + 0.04 * clampf(float(72 - 60) / 30.0, 0.0, 1.0)
+	var expected_lead_weight: float = clampf(lead_bloom * pow(108.0 / 108.0, 0.20), 0.94, 1.06)
 	var expected_gain: float = pow(108.0 / 127.0, 1.15) * engine.SAMPLE_GAIN * 1.0
 	check(is_equal_approx(float(lead["gain"]), expected_gain), "Voice gain stores exact velocity curve separately from role weight")
 	check(is_equal_approx(float(lead["weight"]), expected_lead_weight), "Lead role weight is stored separately")

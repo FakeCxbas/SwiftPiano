@@ -12,7 +12,7 @@ const DEFAULT_VELOCITY = 108
 const RETRIGGER_FADE = 0.025
 const SUSTAIN_RELEASE_BASS = 2.60
 const SUSTAIN_RELEASE_TREBLE = 3.40
-const INNER_SUSTAIN_RELEASE: float = 1.45
+const INNER_SUSTAIN_RELEASE: float = 2.35
 const NO_SUSTAIN_RELEASE = 0.12
 const MAX_RELEASED_TAILS = 14
 const MAX_RELEASED_BASS_TAILS = 3
@@ -312,10 +312,10 @@ func _setup_bus() -> void:
 		AudioServer.add_bus_effect(master_idx, master_eq)
 		
 		master_compressor = AudioEffectCompressor.new()
-		master_compressor.threshold = -5.5
-		master_compressor.ratio = 1.4
-		master_compressor.attack_us = 22000.0
-		master_compressor.release_ms = 240.0
+		master_compressor.threshold = -9.0
+		master_compressor.ratio = 1.6
+		master_compressor.attack_us = 4000.0
+		master_compressor.release_ms = 180.0
 		master_compressor.gain = 6.5
 		AudioServer.add_bus_effect(master_idx, master_compressor)
 		
@@ -343,10 +343,10 @@ func _setup_bus() -> void:
 			AudioServer.add_bus_effect(master_idx, record_effect)
 
 	if master_compressor != null:
-		master_compressor.threshold = -5.5
-		master_compressor.ratio = 1.4
-		master_compressor.attack_us = 22000.0
-		master_compressor.release_ms = 240.0
+		master_compressor.threshold = -9.0
+		master_compressor.ratio = 1.6
+		master_compressor.attack_us = 4000.0
+		master_compressor.release_ms = 180.0
 		master_compressor.gain = 6.5
 
 	if AudioServer.get_bus_index("GrandPiano") >= 0:
@@ -384,11 +384,11 @@ func _setup_bus() -> void:
 	AudioServer.set_bus_name(index, "GrandPiano")
 	AudioServer.set_bus_send(index, "PianoReverb")
 	var compressor: AudioEffectCompressor = AudioEffectCompressor.new()
-	compressor.threshold = -6.5
-	compressor.ratio = 1.35
-	compressor.attack_us = 20000.0
-	compressor.release_ms = 220.0
-	compressor.gain = 0.0
+	compressor.threshold = -8.0
+	compressor.ratio = 1.5
+	compressor.attack_us = 3500.0
+	compressor.release_ms = 180.0
+	compressor.gain = -6.5
 	AudioServer.add_bus_effect(index, compressor)
 	var limiter: AudioEffectHardLimiter = AudioEffectHardLimiter.new()
 	limiter.pre_gain_db = 0.0
@@ -400,44 +400,55 @@ func _setup_bus() -> void:
 
 func _setup_role_buses() -> void:
 	var piano_index: int = AudioServer.get_bus_index("GrandPiano")
-	AudioServer.set_bus_volume_db(piano_index, -4.5)
+	AudioServer.set_bus_volume_db(piano_index, -6.5)
 	var compressor: AudioEffectCompressor = AudioServer.get_bus_effect(piano_index, 0) as AudioEffectCompressor
 	if compressor != null:
-		compressor.threshold = -6.5
-		compressor.ratio = 1.35
-		compressor.attack_us = 20000.0
-		compressor.release_ms = 220.0
-		compressor.gain = 0.0
+		compressor.threshold = -8.0
+		compressor.ratio = 1.5
+		compressor.attack_us = 3500.0
+		compressor.release_ms = 180.0
+		compressor.gain = -6.5
 	for bus_name: String in ["PianoLead", "PianoWarm", "PianoBass"]:
 		var index: int = AudioServer.get_bus_index(bus_name)
-		if index >= 0:
-			AudioServer.set_bus_send(index, "GrandPiano")
-			continue
-		AudioServer.add_bus()
-		index = AudioServer.bus_count - 1
-		AudioServer.set_bus_name(index, bus_name)
+		if index < 0:
+			AudioServer.add_bus()
+			index = AudioServer.bus_count - 1
+			AudioServer.set_bus_name(index, bus_name)
 		AudioServer.set_bus_send(index, "GrandPiano")
-		var equalizer: AudioEffectEQ = AudioEffectEQ.new()
+		var low_pass: AudioEffectLowPassFilter = null
+		var equalizer: AudioEffectEQ = null
+		for eff_i: int in range(AudioServer.get_bus_effect_count(index)):
+			var eff: AudioEffect = AudioServer.get_bus_effect(index, eff_i)
+			if eff is AudioEffectLowPassFilter and low_pass == null:
+				low_pass = eff as AudioEffectLowPassFilter
+			elif eff is AudioEffectEQ and equalizer == null:
+				equalizer = eff as AudioEffectEQ
+		if bus_name == "PianoWarm":
+			if low_pass == null:
+				low_pass = AudioEffectLowPassFilter.new()
+				AudioServer.add_bus_effect(index, low_pass)
+			low_pass.cutoff_hz = 6200.0
+			low_pass.resonance = 0.25
+			low_pass.db = AudioEffectFilter.FILTER_6DB
+		if equalizer == null:
+			equalizer = AudioEffectEQ.new()
+			AudioServer.add_bus_effect(index, equalizer)
 		match bus_name:
 			"PianoLead":
-				equalizer.set_band_gain_db(1, 0.8)
-				equalizer.set_band_gain_db(2, -1.2)
-				equalizer.set_band_gain_db(3, 1.5)
-				equalizer.set_band_gain_db(4, 1.8)
+				equalizer.set_band_gain_db(1, 0.0)
+				equalizer.set_band_gain_db(2, -1.0)
+				equalizer.set_band_gain_db(3, 0.8)
+				equalizer.set_band_gain_db(4, 0.3)
 			"PianoWarm":
-				var low_pass: AudioEffectLowPassFilter = AudioEffectLowPassFilter.new()
-				low_pass.cutoff_hz = 2350.0
-				low_pass.resonance = 0.35
-				low_pass.db = AudioEffectFilter.FILTER_12DB
-				AudioServer.add_bus_effect(index, low_pass)
-				equalizer.set_band_gain_db(2, -2.8)
-				equalizer.set_band_gain_db(3, -1.6)
+				equalizer.set_band_gain_db(1, 0.6)
+				equalizer.set_band_gain_db(2, -1.4)
+				equalizer.set_band_gain_db(3, -0.6)
+				equalizer.set_band_gain_db(4, -0.8)
 			"PianoBass":
-				equalizer.set_band_gain_db(0, 1.2)
-				equalizer.set_band_gain_db(1, 3.0)
-				equalizer.set_band_gain_db(2, -3.2)
-				equalizer.set_band_gain_db(3, 0.6)
-		AudioServer.add_bus_effect(index, equalizer)
+				equalizer.set_band_gain_db(0, 1.0)
+				equalizer.set_band_gain_db(1, 2.2)
+				equalizer.set_band_gain_db(2, -2.2)
+				equalizer.set_band_gain_db(3, 0.4)
 
 func _add_players(count: int) -> void:
 	for i in range(count):
@@ -547,7 +558,7 @@ func set_concert_voicing_enabled(enabled: bool) -> void:
 				effective_role = req_role
 				weight = _compute_role_weight(midi, voiced_vel, effective_role)
 			else:
-				effective_role = "inner" if (voiced_vel <= 76 and midi >= 48) else ("bass" if midi < 50 else "lead")
+				effective_role = "inner" if (voiced_vel <= 94 and midi >= 52) else ("bass" if midi < 50 else "lead")
 			var bus_name: String = bus_names[effective_role]
 			if AudioServer.get_bus_index(bus_name) >= 0:
 				target_bus = bus_name
@@ -566,13 +577,13 @@ func set_concert_voicing_enabled(enabled: bool) -> void:
 func _compute_role_weight(midi: int, velocity: int, role: String) -> float:
 	match role:
 		"inner":
-			return clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.85) * 0.78, 0.28, 0.85)
+			return clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.25) * 0.86, 0.74, 0.90)
 		"bass":
-			var bass_body: float = lerpf(1.16, 1.04, clampf(float(midi - 28) / 26.0, 0.0, 1.0))
-			return bass_body * clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.55), 0.55, 1.18)
+			var bass_body: float = lerpf(1.08, 1.01, clampf(float(midi - 28) / 26.0, 0.0, 1.0))
+			return clampf(bass_body * pow(float(clampi(velocity, 1, 127)) / 108.0, 0.22), 0.90, 1.08)
 		"lead":
-			var lead_bloom: float = 1.0 + 0.10 * clampf(float(midi - 60) / 30.0, 0.0, 1.0)
-			return lead_bloom * clampf(pow(float(clampi(velocity, 1, 127)) / 108.0, 0.50), 0.65, 1.20)
+			var lead_bloom: float = 1.0 + 0.04 * clampf(float(midi - 60) / 30.0, 0.0, 1.0)
+			return clampf(lead_bloom * pow(float(clampi(velocity, 1, 127)) / 108.0, 0.20), 0.94, 1.06)
 	return 1.0
 
 func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY, role: String = "", unvoiced_velocity: int = -1) -> void:
@@ -584,7 +595,7 @@ func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY, role: Stri
 		if role in ["lead", "bass", "inner"]:
 			effective_role = role
 		else:
-			effective_role = "inner" if (velocity <= 76 and midi >= 48) else ("bass" if midi < 50 else "lead")
+			effective_role = "inner" if (velocity <= 94 and midi >= 52) else ("bass" if midi < 50 else "lead")
 		var bus_names: Dictionary = {"lead": "PianoLead", "inner": "PianoWarm", "bass": "PianoBass"}
 		var bus_name: String = bus_names[effective_role]
 		if AudioServer.get_bus_index(bus_name) >= 0:
@@ -626,7 +637,7 @@ func note_on(token: int, midi: int, velocity: int = DEFAULT_VELOCITY, role: Stri
 				released_inner_tokens.append(prev_token)
 			if effective_role == "bass" and role == "bass" and midi < 54 and previous.get("role", "") == "bass" and int(previous.get("midi", -1)) % 12 != midi % 12:
 				previous.stolen = true
-				_release(prev_token, 0.42)
+				_release(prev_token, 0.60)
 		released_inner_tokens.sort_custom(func(a: int, b: int) -> bool:
 			return int(voices[a].get("order", 0)) < int(voices[b].get("order", 0)))
 		while released_inner_tokens.size() > 8:
