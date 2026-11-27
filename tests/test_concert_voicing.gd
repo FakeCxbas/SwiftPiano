@@ -24,6 +24,7 @@ func _run() -> void:
 	await _test_audio_engine()
 	_test_real_sheet_voicing()
 	await _test_audio_separation_and_capture()
+	await _test_campanella_melody_and_sample_consistency()
 	await _test_main_integration()
 	_test_role_buses()
 	_test_tail_limits()
@@ -96,10 +97,10 @@ func _test_audio_separation_and_capture() -> void:
 	local_engine.note_on(401, 75, 110, "lead")
 	local_engine.note_on(402, 67, 86, "inner")
 	var voices: Dictionary = local_engine.get("voices")
-	var lead_player: AudioStreamPlayer = voices[401]["player"]
-	var inner_player: AudioStreamPlayer = voices[402]["player"]
-	var sep_db: float = linear_to_db(lead_player.volume_linear / inner_player.volume_linear)
-	check(sep_db >= 3.0 and sep_db <= 6.0, "Lead player exceeds inner in a complementary 3.0..6.0 dB range")
+	var lead_drive: float = float(voices[401]["gain"]) * float(voices[401]["weight"])
+	var inner_drive: float = float(voices[402]["gain"]) * float(voices[402]["weight"])
+	var sep_db: float = linear_to_db(lead_drive / inner_drive)
+	check(sep_db >= 3.0 and sep_db <= 6.0, "Lead voicing drive exceeds inner in a complementary 3.0..6.0 dB range")
 	local_engine.stop_all()
 	local_engine.set_sustain(true)
 	local_engine.note_on(410, 75, 110, "lead")
@@ -382,6 +383,17 @@ func _test_step_voicing() -> void:
 	var overflow_chord: Array[Dictionary] = [{"notes": [60, 102], "transposition": 0}]
 	var voiced_overflow: Array[Dictionary] = Concert.build_step_voicing(overflow_chord, 12)
 	check(voiced_overflow[0]["voice_roles"].get(60, "") == Concert.ROLE_LEAD and not voiced_overflow[0]["voice_roles"].has(102), "Out-of-range transposed notes do not steal lead role from highest playable note")
+	var repeated_solo_melody: Array[Dictionary] = [
+		{"notes": [60, 64, 67]},
+		{"notes": [60, 64, 67]},
+		{"notes": [84]},
+		{"notes": [84]},
+		{"notes": [84]},
+		{"notes": [59, 62, 65]},
+		{"notes": [60, 64, 67]},
+	]
+	var voiced_repeated: Array[Dictionary] = Concert.build_step_voicing(repeated_solo_melody)
+	check(voiced_repeated[0]["voice_roles"].get(67, "") == Concert.ROLE_INNER and voiced_repeated[1]["voice_roles"].get(67, "") == Concert.ROLE_INNER and voiced_repeated[2]["voice_roles"].get(84, "") == Concert.ROLE_LEAD and voiced_repeated[5]["voice_roles"].get(65, "") == Concert.ROLE_INNER and voiced_repeated[6]["voice_roles"].get(67, "") == Concert.ROLE_INNER, "Repeated high solo melody preserves inner role on adjacent accompaniment chords")
 
 func _test_live_voicing() -> void:
 	var empty: Dictionary = Concert.voice_live_chord([])
@@ -471,3 +483,83 @@ func _test_bass_damping() -> void:
 	engine.note_on(305, 38, 108)
 	check(not bool(engine.voices[304]["stolen"]), "Inferred bass does not trigger explicit harmonic damping")
 	engine.stop_all()
+
+
+func _test_campanella_melody_and_sample_consistency() -> void:
+	var json_file: FileAccess = FileAccess.open("res://assets/library/letras.json", FileAccess.READ)
+	check(json_file != null, "letras.json opens for Campanella regression check")
+	if json_file == null:
+		return
+	var parsed: Variant = JSON.parse_string(json_file.get_as_text())
+	check(parsed is Dictionary and (parsed as Dictionary).has("songs"), "letras.json parses song array")
+	if not (parsed is Dictionary):
+		return
+	var sheets_by_id: Dictionary = {}
+	for entry: Variant in (parsed as Dictionary).get("songs", []):
+		if entry is Dictionary:
+			var d: Dictionary = entry
+			sheets_by_id[str(d.get("id", ""))] = str(d.get("sheet", ""))
+	check(sheets_by_id.has("letras-033") and sheets_by_id.has("letras-034"), "Campanella sheets exist in letras.json")
+	if sheets_by_id.has("letras-033"):
+		var camp_steps: Array[Dictionary] = SheetParser.parse(str(sheets_by_id["letras-033"]), true)
+		Concert.voice_steps(camp_steps)
+		var melody_kept_lead: bool = true
+		for idx: int in [27, 29, 35, 37, 55, 57]:
+			var st: Dictionary = camp_steps[idx]
+			var top_note: int = int((st["notes"] as Array).max())
+			var roles: Dictionary = st["voice_roles"]
+			var vels: Dictionary = st["voiced_velocities"]
+			if roles.get(top_note, "") != Concert.ROLE_LEAD or int(vels.get(top_note, 0)) < 104:
+				melody_kept_lead = false
+		check(melody_kept_lead, "La Campanella alternating melody notes beneath Z bell pedal keep lead role >= 104")
+		var z_step: Dictionary = camp_steps[28]
+		check(z_step["voice_roles"].get(87, "") == Concert.ROLE_LEAD and int(z_step["voiced_velocities"].get(87, 127)) <= 104, "Repeated bell pedal Z stays lead with leggiero velocity <= 104")
+	if sheets_by_id.has("letras-034"):
+		var god_steps: Array[Dictionary] = SheetParser.parse(str(sheets_by_id["letras-034"]), true)
+		Concert.voice_steps(god_steps)
+		var run_kept_lead: bool = true
+		for idx: int in [37, 39, 41, 43, 45, 47, 49, 51, 53, 55, 57, 59, 94, 95, 134, 135]:
+			var st: Dictionary = god_steps[idx]
+			var top_note: int = int((st["notes"] as Array).max())
+			var roles: Dictionary = st["voice_roles"]
+			var vels: Dictionary = st["voiced_velocities"]
+			if roles.get(top_note, "") != Concert.ROLE_LEAD or int(vels.get(top_note, 0)) < 104:
+				run_kept_lead = false
+		check(run_kept_lead, "Campanella descending octaves, pickup L, and tonic [wEYD] preserve lead >= 104")
+		var sl_roles: Dictionary = god_steps[37]["voice_roles"]
+		check(sl_roles.get(73, "") != Concert.ROLE_BASS, "High right-hand octave [SL] keeps C#5 thumb out of bass role")
+	var cap_engine: Node = AudioEngine.new()
+	root.add_child(cap_engine)
+	await process_frame
+	cap_engine.set_sustain(true)
+	cap_engine.set_volume(160)
+	var master_idx: int = AudioServer.get_bus_index("Master")
+	var cap: AudioEffectCapture = AudioEffectCapture.new()
+	cap.buffer_length = 3.0
+	var cap_idx: int = AudioServer.get_bus_effect_count(master_idx)
+	AudioServer.add_bus_effect(master_idx, cap)
+	var rms_dbs: Array[float] = []
+	for probe_i: int in range(3):
+		var midi_list: Array[int] = [71, 75, 87]
+		var midi: int = midi_list[probe_i]
+		cap_engine.stop_all()
+		await create_timer(0.15).timeout
+		cap.clear_buffer()
+		cap_engine.note_on(600 + probe_i, midi, 108, "lead")
+		cap_engine.note_off(600 + probe_i)
+		await create_timer(0.45).timeout
+		var frames: PackedVector2Array = cap.get_buffer(cap.get_frames_available())
+		var energy: float = 0.0
+		for frame: Vector2 in frames:
+			energy += frame.length_squared()
+		var rms: float = sqrt(energy / maxf(1.0, float(frames.size() * 2)))
+		check(rms >= db_to_linear(-24.0), "Captured lead MIDI %d stays clearly audible above -24 dBFS" % midi)
+		rms_dbs.append(linear_to_db(maxf(0.00001, rms)))
+	var max_db: float = maxf(rms_dbs[0], maxf(rms_dbs[1], rms_dbs[2]))
+	var min_db: float = minf(rms_dbs[0], minf(rms_dbs[1], rms_dbs[2]))
+	check(max_db - min_db <= 4.0, "Lead notes across C5/Ds5/Ds6 sample banks stay within 4.0 dB RMS spread")
+	cap_engine.stop_all()
+	await create_timer(0.15).timeout
+	AudioServer.remove_bus_effect(master_idx, cap_idx)
+	cap_engine.queue_free()
+	await process_frame

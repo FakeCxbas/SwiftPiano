@@ -33,6 +33,34 @@ const GRAND_PIANO_SAMPLE_PEAKS = {
 	105: 0.1109, 108: 0.1349
 }
 
+## Per-sample normalization gains calibrated across peak and 120 ms attack RMS.
+const INSTRUMENT_SAMPLE_NORMS: Dictionary = {
+	"grand_piano": {
+		21: 2.12, 24: 2.32, 27: 2.02, 30: 2.17, 33: 2.43, 36: 2.76, 39: 2.11, 42: 2.28,
+		45: 2.53, 48: 2.02, 51: 2.09, 54: 3.30, 57: 3.75, 60: 2.16, 63: 2.14, 66: 2.63,
+		69: 3.13, 72: 6.10, 75: 4.60, 78: 2.86, 81: 3.72, 84: 3.25, 87: 2.96, 90: 4.24,
+		93: 5.11, 96: 3.95, 99: 7.20, 102: 4.53, 105: 6.64, 108: 6.44
+	},
+	"steinway_grand": {
+		21: 11.75, 24: 12.80, 27: 19.86, 30: 8.93, 33: 7.42, 36: 7.60, 39: 8.76, 42: 8.21,
+		45: 8.18, 48: 9.49, 51: 8.94, 54: 14.75, 57: 8.81, 60: 16.88, 63: 7.77, 66: 7.77,
+		69: 12.36, 72: 19.03, 75: 11.95, 78: 8.44, 81: 10.12, 84: 10.25, 87: 10.61, 90: 6.46,
+		93: 9.50, 96: 6.89, 99: 6.53, 102: 11.31, 105: 12.09, 108: 11.47
+	},
+	"bright_piano": {
+		21: 6.96, 24: 6.84, 27: 7.19, 30: 7.07, 33: 7.43, 36: 7.93, 39: 6.09, 42: 5.91,
+		45: 5.71, 48: 5.92, 51: 6.34, 54: 6.07, 57: 7.78, 60: 7.50, 63: 11.05, 66: 11.36,
+		69: 6.24, 72: 9.07, 75: 8.47, 78: 9.13, 81: 9.91, 84: 11.32, 87: 6.11, 90: 6.69,
+		93: 6.53, 96: 17.45, 99: 17.62, 102: 17.62, 105: 11.78, 108: 14.42
+	},
+	"honkytonk_piano": {
+		21: 5.97, 24: 5.87, 27: 6.22, 30: 6.07, 33: 6.80, 36: 6.86, 39: 5.19, 42: 5.22,
+		45: 5.08, 48: 4.89, 51: 5.47, 54: 5.47, 57: 6.99, 60: 6.61, 63: 10.27, 66: 9.94,
+		69: 5.45, 72: 8.00, 75: 7.44, 78: 7.38, 81: 7.44, 84: 9.50, 87: 5.74, 90: 5.73,
+		93: 6.33, 96: 15.98, 99: 15.51, 102: 15.98, 105: 8.68, 108: 11.79
+	}
+}
+
 const INSTRUMENTS = {
 	"grand_piano": {
 		"name": "Piano de Cola",
@@ -514,10 +542,14 @@ func _make_piano(midi: int) -> AudioStreamWAV:
 	return stream
 
 func _get_sample_normalization(inst_id: String, reference_midi: int) -> float:
+	if INSTRUMENT_SAMPLE_NORMS.has(inst_id):
+		var norms: Dictionary = INSTRUMENT_SAMPLE_NORMS[inst_id]
+		if norms.has(reference_midi):
+			return float(norms[reference_midi])
 	if inst_id == "grand_piano" and GRAND_PIANO_SAMPLE_PEAKS.has(reference_midi):
-		var raw_peak: float = GRAND_PIANO_SAMPLE_PEAKS[reference_midi]
-		return clampf(SAMPLE_GAIN / maxf(0.15, raw_peak), 1.0, 4.2)
-	var inst_info = INSTRUMENTS.get(inst_id, {})
+		var raw_peak: float = float(GRAND_PIANO_SAMPLE_PEAKS[reference_midi])
+		return clampf(SAMPLE_GAIN / maxf(0.10, raw_peak), 1.0, 7.5)
+	var inst_info: Dictionary = INSTRUMENTS.get(inst_id, {})
 	return float(inst_info.get("norm_gain", 2.4))
 
 func _calculate_release_time(midi: int, with_sustain: bool = false, role: String = "") -> float:
