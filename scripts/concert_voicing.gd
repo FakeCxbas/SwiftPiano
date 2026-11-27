@@ -48,30 +48,30 @@ static func build_step_voicing(steps: Array[Dictionary], extra_transposition: in
 			var drop: int = ceiling - top
 			var melody: bool = drop <= 4 or (k >= 2 and top - pitches[k - 2] >= 7 and drop <= 9) or (k == 1 and pitches[0] >= 58 and drop <= 7)
 			if melody:
-				velocities[raw_sorted[k - 1]] = clampi(110 + clampi(int(round(float(top - 66) * 0.45)), -4, 10) + (3 if k >= 3 else 0), 102, 124)
+				velocities[raw_sorted[k - 1]] = clampi(107 + clampi(int(round(float(top - 66) * 0.25)), -3, 6) + (2 if k >= 3 else 0), 104, 114)
 				roles[raw_sorted[k - 1]] = ROLE_LEAD
 				if k >= 2:
 					var bottom_is_bass: bool = pitches[0] < 55 or top - pitches[0] >= 12
-					velocities[raw_sorted[0]] = clampi((96 if pitches[0] < 48 else 88) - 2 * maxi(0, k - 3), 78, 100) if bottom_is_bass else 74
+					velocities[raw_sorted[0]] = clampi((102 if pitches[0] < 48 else 96) - maxi(0, k - 4), 90, 104) if bottom_is_bass else 86
 					roles[raw_sorted[0]] = ROLE_BASS if bottom_is_bass else ROLE_INNER
 				for j: int in range(1, k - 1):
-					velocities[raw_sorted[j]] = clampi(68 - 3 * maxi(0, k - 3), 52, 70)
+					velocities[raw_sorted[j]] = clampi(86 - 2 * maxi(0, k - 3), 78, 88)
 					roles[raw_sorted[j]] = ROLE_INNER
 			elif k == 1:
-				velocities[raw_sorted[0]] = 94 if pitches[0] < 55 else 74
+				velocities[raw_sorted[0]] = 98 if pitches[0] < 55 else 88
 				roles[raw_sorted[0]] = ROLE_BASS if pitches[0] < 55 else ROLE_INNER
 			else:
-				var rep_atten: int = 5 if i > 0 and metadata[i - 1]["raw_sorted"] == raw_sorted else 0
-				velocities[raw_sorted[k - 1]] = clampi(67 - 3 * maxi(0, k - 2) - rep_atten, 50, 68)
+				var rep_atten: int = 3 if i > 0 and metadata[i - 1]["raw_sorted"] == raw_sorted else 0
+				velocities[raw_sorted[k - 1]] = clampi(88 - 2 * maxi(0, k - 3) - rep_atten, 80, 90)
 				roles[raw_sorted[k - 1]] = ROLE_INNER
-				if pitches[0] < 48:
-					velocities[raw_sorted[0]] = clampi(80 - 2 * maxi(0, k - 3) - rep_atten, 66, 82)
+				if pitches[0] < 55:
+					velocities[raw_sorted[0]] = clampi(95 - 2 * maxi(0, k - 3) - rep_atten, 86, 97)
 					roles[raw_sorted[0]] = ROLE_BASS
 				else:
-					velocities[raw_sorted[0]] = clampi(61 - 3 * maxi(0, k - 2) - rep_atten, 48, 62)
+					velocities[raw_sorted[0]] = clampi(84 - 2 * maxi(0, k - 3) - rep_atten, 76, 86)
 					roles[raw_sorted[0]] = ROLE_INNER
 				for j: int in range(1, k - 1):
-					velocities[raw_sorted[j]] = clampi(58 - 3 * maxi(0, k - 2) - rep_atten, 46, 60)
+					velocities[raw_sorted[j]] = clampi(82 - 2 * maxi(0, k - 3) - rep_atten, 74, 84)
 					roles[raw_sorted[j]] = ROLE_INNER
 			var explicit_velocities: Variant = steps[i].get("velocities", {})
 			if explicit_velocities is Dictionary:
@@ -107,12 +107,12 @@ static func voice_live_chord(pitches: Array[int], base_velocity: int = 108) -> D
 	elif k >= 2:
 		var bottom: int = sorted_pitches[0]
 		var top: int = sorted_pitches[k - 1]
-		velocities[top] = clampi(base_velocity + 6, 1, 124)
+		velocities[top] = clampi(base_velocity + 2, 1, 114)
 		roles[top] = ROLE_LEAD
 		var bottom_is_bass: bool = bottom < 55 or top - bottom >= 12
-		velocities[bottom] = clampi(base_velocity - 8, 60, 104) if bottom_is_bass else clampi(base_velocity - 26, 48, 84)
+		velocities[bottom] = clampi(base_velocity - 6, 72, 104) if bottom_is_bass else clampi(base_velocity - 18, 72, 94)
 		roles[bottom] = ROLE_BASS if bottom_is_bass else ROLE_INNER
 		for j: int in range(1, k - 1):
-			velocities[sorted_pitches[j]] = clampi(base_velocity - 34, 46, 76)
+			velocities[sorted_pitches[j]] = clampi(base_velocity - 22, 70, 90)
 			roles[sorted_pitches[j]] = ROLE_INNER
 	return {"velocities": velocities, "roles": roles}
